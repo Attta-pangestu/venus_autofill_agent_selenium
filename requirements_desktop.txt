@@ -1,0 +1,50 @@
+# Venus Desktop Application Requirements
+# Core dependencies for desktop application
+
+# GUI Framework
+tkinter  # Built-in with Python, but listed for completeness
+
+# Web Framework (for internal API server)
+Flask==2.3.3
+Flask-CORS==4.0.0
+
+# Web Automation
+selenium==4.15.2
+webdriver-manager==4.0.1
+
+# HTTP Requests
+requests==2.31.0
+
+# Async Support
+aiohttp==3.9.1
+aiofiles==23.2.0
+
+# Data Processing
+pandas==2.1.4
+numpy==1.24.3
+
+# Date/Time Handling
+python-dateutil==2.8.2
+
+# Logging and Configuration
+pyyaml==6.0.1
+coloredlogs==15.0.1
+
+# Threading and Concurrency
+concurrent-futures==3.1.1  # For older Python versions
+
+# File Handling
+openpyxl==3.1.2  # For Excel file support
+
+# System Integration
+psutil==5.9.6  # For system monitoring
+
+# Development and Testing
+pytest==7.4.3
+pytest-asyncio==0.21.1
+
+# Optional: For better error handling and debugging
+traceback2==1.4.0
+
+# Optional: For enhanced UI components
+pillow==10.1.0  # For image support in UI

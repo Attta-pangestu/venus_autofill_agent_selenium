@@ -1,0 +1,1 @@
+# Venus Desktop Application - Core Package

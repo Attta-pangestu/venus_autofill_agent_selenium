@@ -1,0 +1,71 @@
+<svg width="256" height="256" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="gradient1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="gradient2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4facfe;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#00f2fe;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background circle -->
+  <circle cx="128" cy="128" r="120" fill="url(#gradient1)" stroke="#ffffff" stroke-width="4"/>
+  
+  <!-- Robot head -->
+  <rect x="88" y="70" width="80" height="60" rx="15" fill="#ffffff" opacity="0.9"/>
+  
+  <!-- Robot eyes -->
+  <circle cx="108" cy="90" r="8" fill="url(#gradient2)"/>
+  <circle cx="148" cy="90" r="8" fill="url(#gradient2)"/>
+  
+  <!-- Robot antenna -->
+  <line x1="128" y1="70" x2="128" y2="50" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="128" cy="50" r="4" fill="#ffffff"/>
+  
+  <!-- Robot mouth/display -->
+  <rect x="98" y="105" width="60" height="15" rx="7" fill="url(#gradient2)" opacity="0.8"/>
+  
+  <!-- Robot body -->
+  <rect x="78" y="130" width="100" height="80" rx="20" fill="#ffffff" opacity="0.9"/>
+  
+  <!-- Control panel -->
+  <rect x="88" y="140" width="80" height="40" rx="8" fill="url(#gradient1)" opacity="0.3"/>
+  
+  <!-- Buttons -->
+  <circle cx="108" cy="155" r="6" fill="url(#gradient2)"/>
+  <circle cx="128" cy="155" r="6" fill="url(#gradient2)"/>
+  <circle cx="148" cy="155" r="6" fill="url(#gradient2)"/>
+  
+  <!-- Display screen -->
+  <rect x="98" y="165" width="60" height="10" rx="2" fill="#ffffff"/>
+  
+  <!-- Robot arms -->
+  <rect x="58" y="140" width="20" height="40" rx="10" fill="#ffffff" opacity="0.9"/>
+  <rect x="178" y="140" width="20" height="40" rx="10" fill="#ffffff" opacity="0.9"/>
+  
+  <!-- Venus text -->
+  <text x="128" y="235" font-family="Arial, sans-serif" font-size="18" font-weight="bold" text-anchor="middle" fill="#ffffff">VENUS</text>
+  
+  <!-- Automation symbols -->
+  <g transform="translate(40, 40)">
+    <circle cx="0" cy="0" r="12" fill="url(#gradient2)" opacity="0.8"/>
+    <path d="M-6,-3 L0,3 L6,-3" stroke="#ffffff" stroke-width="2" fill="none" stroke-linecap="round"/>
+  </g>
+  
+  <g transform="translate(216, 40)">
+    <circle cx="0" cy="0" r="12" fill="url(#gradient2)" opacity="0.8"/>
+    <path d="M-6,-3 L0,3 L6,-3" stroke="#ffffff" stroke-width="2" fill="none" stroke-linecap="round"/>
+  </g>
+  
+  <g transform="translate(40, 216)">
+    <circle cx="0" cy="0" r="12" fill="url(#gradient2)" opacity="0.8"/>
+    <rect x="-4" y="-4" width="8" height="8" fill="#ffffff"/>
+  </g>
+  
+  <g transform="translate(216, 216)">
+    <circle cx="0" cy="0" r="12" fill="url(#gradient2)" opacity="0.8"/>
+    <rect x="-4" y="-4" width="8" height="8" fill="#ffffff"/>
+  </g>
+</svg>

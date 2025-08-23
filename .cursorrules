@@ -1,0 +1,102 @@
+# Venus AutoFill Selenium Browser Automation Project Rules
+
+## Project Intelligence & Patterns
+
+### Memory Bank Architecture
+- **Hierarchical Documentation**: All README files stored in `memory-bank/readme/`, test files in `memory-bank/tests/`, and build files in `memory-bank/build/`
+- **Core Memory Bank Files**: projectbrief.md → productContext.md → systemPatterns.md → techContext.md → activeContext.md → progress.md (in dependency order)
+- **Documentation First**: Always read ALL memory bank files at start of ANY task - this is not optional
+- **Complete Context Required**: Memory bank provides COMPLETE project understanding and context
+
+### Technology Stack Preferences
+- **Python 3.8+**: Primary language with asyncio, type hints, and pathlib
+- **Selenium WebDriver 4.15.2**: Browser automation with webdriver-manager for Chrome
+- **Testing Framework**: pytest for unit tests, with pytest-cov for coverage reporting
+- **Build System**: Python setuptools with cross-platform PowerShell/Bash scripts
+- **Configuration**: JSON format for app configuration, with environment-specific templates
+
+### Architecture Patterns
+- **Layered Architecture**: UI Layer → Business Logic → Data Access → Infrastructure
+- **Factory Pattern**: BrowserManager creates configured WebDriver instances
+- **Command Pattern**: Automation events as executable command objects
+- **Strategy Pattern**: Multiple element finding strategies with intelligent fallbacks
+- **Observer Pattern**: Visual feedback system observes automation events
+
+### Code Organization Principles
+- **src/ Structure**: Main application code in src/ with core/ subdirectory for modules
+- **Configuration Driven**: JSON flow definitions for automation logic as data, not code
+- **Async Architecture**: Asyncio for responsive user interface and better performance
+- **Error Handling**: Comprehensive retry mechanisms and graceful failure handling
+- **Logging Strategy**: File and console logging with UTF-8 encoding
+
+### Target System Integration
+- **Millware ERP**: Specific integration with http://millwarep3.rebinmas.com:8003/
+- **Chrome Browser Only**: Focused on Chrome for consistency and debugging capabilities
+- **Element Targeting**: Multiple selector strategies (CSS, XPath, text content, attributes)
+- **Session Management**: Persistent browser sessions with proper cleanup
+
+### Testing & Quality Assurance
+- **pytest Framework**: Primary testing with fixtures for WebDriver mocking
+- **Coverage Goal**: 80%+ code coverage on core components, 90%+ on critical business logic
+- **Integration Testing**: Real browser testing with actual Millware system
+- **Code Quality**: black for formatting, flake8 for linting, mypy for type checking
+
+### Build & Deployment
+- **Cross-Platform Builds**: PowerShell scripts for Windows, Bash for Linux/macOS
+- **Multiple Distribution Formats**: Source distribution, wheel, and optional standalone executable
+- **Environment-Specific Configs**: Development, testing, and production configurations
+- **Automated Build Pipeline**: GitHub Actions for CI/CD with automated testing
+
+### Development Workflow
+- **Documentation Updates**: Update memory bank after significant changes
+- **Test-Driven Development**: Write tests before implementing new features
+- **Incremental Development**: Small, testable changes with comprehensive logging
+- **Version Control**: Semantic versioning with clear release documentation
+
+### User Experience Priorities
+- **Visual Feedback**: Real-time progress indicators and element highlighting
+- **CLI Interface**: Numbered menu options for easy user selection
+- **Error Communication**: Clear, actionable error messages for users
+- **Configuration Flexibility**: Easy adaptation to different environments
+
+### Known Constraints & Limitations
+- **Chrome Dependency**: Requires Chrome browser installation
+- **Network Dependency**: Requires stable internet connection for Millware system
+- **Single-threaded WebDriver**: WebDriver operations are not concurrent
+- **Memory Usage**: Chrome can consume significant memory (200MB+)
+
+### Performance Characteristics
+- **Startup Time**: ~2-3 seconds for application initialization
+- **Flow Execution**: Variable based on complexity (typically 10-60 seconds)
+- **Memory Footprint**: ~150-300MB including Chrome browser process
+- **Build Performance**: Development builds 15-30s, production builds 60-120s
+
+### Security Considerations
+- **Credential Management**: Stored in local configuration files, support for .env files
+- **No Hardcoded Secrets**: Credentials never hardcoded in source code
+- **Local Storage**: All data stored locally, no cloud dependencies
+- **Session Cleanup**: Proper session cleanup and logout procedures
+
+### Maintenance Patterns
+- **Dependency Pinning**: Pin critical dependencies to known-working versions
+- **Comprehensive Logging**: Detailed logging for troubleshooting automation issues
+- **Error Recovery**: Automatic retry mechanisms for transient failures
+- **Documentation Maintenance**: Keep memory bank updated with system changes
+
+### Project-Specific Conventions
+- **Flow Definitions**: JSON-based automation flows with variables and conditional logic
+- **Event Types**: 15+ supported event types for different automation actions
+- **Configuration Structure**: browser/automation/credentials/urls sections in app_config.json
+- **Visual Feedback**: Automation badge, progress indicators, and element highlighting
+
+### Development Environment
+- **Windows 10**: Primary development platform with PowerShell
+- **Virtual Environment**: Always use venv for dependency isolation
+- **IDE Integration**: Optimized for Cursor with comprehensive documentation
+- **Package Management**: pip with requirements.txt for reproducible builds
+
+---
+
+*Last Updated: Monday, June 09, 2025, 09:42 AM WIB*
+*Memory Bank Status: Complete - All core files created and documented*
+*Current Phase: Testing framework implementation and build automation* 

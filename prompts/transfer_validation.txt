@@ -1,0 +1,35 @@
+I have an updated and optimized JSON API endpoint at http://localhost:5173/api/staging/data-grouped that I need to integrate into my automation system.
+
+**Task Requirements:**
+
+1. **API Integration Update:**
+   - Review the API structure in `config/data_grouped_sampel.json` 
+   - Read the API documentation in `config/api_dokumentasi.md`
+   - Update the existing application `run_user_controlled_automation.py` to use this new optimized API endpoint instead of the current data source
+
+2. **Add Cross-Check Validation Feature:**
+   - After the WebDriver completes data input processing, implement a validation system that:
+     - Communicates progress updates between the web interface and WebDriver
+     - Opens a validation page showing cross-check results of data that was input into the mill system
+     - Validates data by querying directly from the database
+
+3. **Database Validation Logic:**
+   - **Test Mode:** Query from `[db_ptrj_mill_test].[dbo].[PR_TASKREGLN]` table
+   - **Real Mode:** Query from `[db_ptrj_mill].[dbo].[PR_TASKREGLN]` table (same table structure, different database)
+   
+   **Validation Process:**
+   - Match records using `PTRJ_employee_Id` (employee ID from staging data)
+   - Compare transaction dates with date adjustment logic:
+     - **Test Mode:** Subtract 1 month from the input transaction date
+     - **Real Mode:** Use the original transaction date without modification
+   - For each employee and transaction date, compare:
+     - **Overtime Hours:** Where `OT = 1`, compare `Hours` field with overtime data from staging
+     - **Regular Hours:** Where `OT = 0`, compare `Hours` field with regular work hours from staging
+   - Mark data transfer as "SUCCESS" when both overtime and regular hours match between staging data and database records
+   - Perform this validation for every transaction date processed
+
+4. **Expected Outcome:**
+   - Updated automation script using the new API
+   - Cross-check validation feature that verifies data integrity after processing
+   - Support for both test and real modes with appropriate database connections and date handling
+   - Web interface showing validation results with success/failure status for each employee record

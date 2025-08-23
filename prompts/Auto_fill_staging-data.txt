@@ -1,0 +1,109 @@
+I need to create an automated data entry system that consists of two main components:
+
+## Component 1: Data Interface
+Create a user interface that:
+1. Fetches all staging data from the API endpoint: `http://localhost:5173/api/staging/data`
+2. Displays the staging data in a table/grid format showing key fields like:
+   - Employee Name (`employee_name`)
+   - Date (`date`) 
+   - Employee ID (`employee_id`)
+   - Task Code (`task_code`)
+   - Station Code (`station_code`)
+   - Status (`status`)
+3. Allows users to select specific rows/records for automation
+4. Provides filtering capabilities to select records by:
+   - Specific employee name
+   - Specific date range
+   - Other relevant criteria
+5. Shows a "Process Selected" button to trigger the automation for selected records
+
+## Component 2: Selenium Automation
+Create a Selenium automation script that:
+
+### Login Flow:
+1. Navigate to `http://millwarep3:8004/`
+2. Find username input: `<input name="txtUsername" type="text" id="txtUsername">`
+3. Enter username: `adm075`
+4. Find password input: `<input name="txtPassword" type="password" id="txtPassword">`
+5. Enter password: `adm075`
+6. Click login button: `<input type="submit" name="btnLogin" id="btnLogin">` or press Enter key
+7. Navigate to: `http://millwarep3:8004/en/PR/trx/frmPrTrxTaskRegisterDet.aspx`
+
+### Data Entry Flow (for each selected staging record):
+1. **Date Input**: 
+   - Find element: `<input name="ctl00$MainContent$txtTrxDate" id="MainContent_txtTrxDate">`
+   - Enter date from staging data `date` field in dd/mm/yyyy format
+
+2. **Employee Name Input**:
+   - Find element: `<input class="ui-autocomplete-input ui-widget ui-widget-content" autocomplete="off">`
+   - Enter `employee_name` from staging data
+
+3. **Charge Job Input** (parse `raw_charge_job` field):
+   - Split `raw_charge_job` by "/" separator
+   - Example: "(OC7190) BOILER OPERATION / STN-BLR (STATION BOILER) / BLR00000 (LABOUR COST) / L (LABOUR)"
+   - Results in 4 parts to be entered sequentially
+
+4. **Sequential Input Method**:
+   - Find first task code input: `<input class="ui-autocomplete-input ui-widget ui-widget-content">`
+   - Enter first charge job part: "(OC7190) BOILER OPERATION"
+   - For subsequent inputs, locate the next input field (adjacent/below the previous one)
+   - Continue entering remaining charge job parts in sequence
+   - Reference the HTML structure file: `struktur_inputan.html` for complete input field mapping
+
+5. **After Each Complete Record Entry**:
+   - Send keyboard input: Arrow Down key
+   - Send keyboard input: Enter key  
+   - Wait for page reload completion (implement dynamic page load detection, NOT time-based waiting)
+
+## Technical Requirements:
+- Use the staging data API structure provided (with fields like `employee_id`, `employee_name`, `date`, `raw_charge_job`, etc.)
+- Implement robust page load detection instead of fixed time delays
+- Handle the autocomplete input fields properly
+- Ensure proper error handling and logging
+- Make the system modular so the interface and automation can work independently
+
+## API Documentation Reference:
+- GET `/api/staging/data`: Retrieve staged data with filtering and pagination
+- The staging records have status "staged" and need to be processed through the web automation
+
+
+sekaran coba fetch langsun dari localhost:5173/api/sataging/data
+
+ambil record pertamanya , 
+seharusnya data nya ini 
+
+ {
+      "check_in": "08:00",
+      "check_out": "17:00",
+      "created_at": "2025-06-10 04:43:03",
+      "date": "2025-05-30",
+      "day_of_week": "Sab",
+      "employee_id": "PTRJ.241000001",
+      "employee_name": "Ade Prasetya",
+      "expense_code": "L (LABOUR)",
+      "id": "c1e595b4-d498-4320-bce3-8d0f0cf52060",
+      "machine_code": "BLR00000 (LABOUR COST)",
+      "notes": "Transferred from Monthly Grid - May 2025",
+      "overtime_hours": 0.0,
+      "raw_charge_job": "(OC7190) BOILER OPERATION / STN-BLR (STATION BOILER) / BLR00000 (LABOUR COST) / L (LABOUR)",
+      "regular_hours": 0.0,
+      "shift": "Regular",
+      "source_record_id": "",
+      "station_code": "STN-BLR (STATION BOILER)",
+      "status": "staged",
+      "task_code": "(OC7190) BOILER OPERATION",
+      "total_hours": 0.0,
+      "transfer_status": "success",
+      "updated_at": "2025-06-10 04:43:03"
+    },
+
+untuk task code dan lain-lain yang ada dibawahnya gunakan raw_charge_job, gunakan separaator "/" 
+buat mnjadi array , 
+
+lalu isikan unutk task code ke bawah,
+kolom lainnya akan dirender secara  kondisional setelah task code diisikan , arrow down, lalu tekan enter, 
+
+
+task_code diisikan array 0 atau urutan pertama  dari  hasil split raw_charge_job nya
+
+untuk array beirkutnya diiskan untuk kolom di bawah  dari task code, begitu eterusnya secra berurutan sampai charge_job habis dan tekan add, 

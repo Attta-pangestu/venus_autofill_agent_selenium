@@ -1,0 +1,32 @@
+I want to implement the automation flow that is already working correctly in `test_real_api_data.py`, but with a modification to the data source for the automation process.
+
+**Current vs. Desired Behavior:**
+
+**Previously:** The automation system retrieved data from the entire staging/data API endpoint and processed all records automatically.
+
+**Now:** I want to implement a user-controlled data selection workflow as shown in `run_api_automation.py` or `run_automation_system.py`.
+
+**Required Implementation:**
+
+1. **Initial State:** When the program starts, the WebDriver should:
+   - Automatically perform login and navigation to reach the task register page: `http://millwarep3:8004/en/PR/trx/frmPrTrxTaskRegisterDet.aspx`
+   - Wait in a ready state (do NOT start data input immediately)
+
+2. **User Selection Phase:** 
+   - Display the web interface that shows available staging data
+   - Allow the user to select specific records from the staging data
+   - Wait for user to click "Process Selected Records" or similar trigger button
+
+3. **Data Processing Phase:** 
+   - After the user triggers the process, display the selected data in the console/terminal
+   - Only then should the WebDriver begin the automated data input process
+   - Process only the user-selected records (not all staging data)
+
+**Key Requirements:**
+- WebDriver should be pre-positioned at the task register page and ready
+- No automatic data processing until user selection is made
+- Clear separation between user selection phase and automation execution phase
+- Display selected data before starting automation
+- Use the same reliable automation logic from `test_real_api_data.py`
+
+Please modify the existing automation system to implement this user-controlled workflow while maintaining the robust form detection and data entry logic that already works.
