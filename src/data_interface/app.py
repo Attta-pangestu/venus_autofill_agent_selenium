@@ -23,7 +23,7 @@ from core.employee_exclusion_validator import EmployeeExclusionValidator
 
 # Import enhanced system components
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-from src.core.api_data_automation import RealAPIDataProcessor
+from src.core.database_manager import DatabaseManager
 
 # Set up logging with UTF-8 support
 import sys
@@ -51,73 +51,104 @@ app.config['JSONIFY_PRETTYPRINT_REGULAR'] = False
 app.config['JSON_SORT_KEYS'] = False
 
 # Configuration
-API_BASE_URL = "http://localhost:5173"
-STAGING_DATA_ENDPOINT = f"{API_BASE_URL}/api/staging/data"
+# Database-based configuration - no longer using API endpoints
 
 class StagingDataManager:
     """Manages staging data operations"""
     
-    def __init__(self):
+    def __init__(self, db_manager):
+        self.db_manager = db_manager
         self.cached_data = None
         self.cache_timestamp = None
         self.cache_duration = 300  # 5 minutes
     
     def fetch_staging_data(self, filters: Dict[str, Any] = None) -> Dict[str, Any]:
-        """Fetch staging data from API with optional filters"""
+        """Fetch staging data from database with optional filters"""
         try:
             # Check cache first
             if self._is_cache_valid():
                 logger.info("Using cached staging data")
                 return self._apply_filters(self.cached_data, filters)
             
-            # Fetch fresh data
-            logger.info(f"Fetching staging data from {STAGING_DATA_ENDPOINT}")
+            # Fetch fresh data from database
+            logger.info("Fetching staging data from database")
             
-            params = {}
+            # Build SQL query with filters
+            query = "SELECT * FROM staging_attendance WHERE 1=1"
+            params = []
+            
             if filters:
-                # Convert filters to API parameters
                 if filters.get('employee_name'):
-                    params['employee_name'] = filters['employee_name']
+                    query += " AND employee_name LIKE ?"
+                    params.append(f"%{filters['employee_name']}%")
                 if filters.get('date_from'):
-                    params['date_from'] = filters['date_from']
+                    query += " AND date >= ?"
+                    params.append(filters['date_from'])
                 if filters.get('date_to'):
-                    params['date_to'] = filters['date_to']
+                    query += " AND date <= ?"
+                    params.append(filters['date_to'])
                 if filters.get('status'):
-                    params['status'] = filters['status']
-                if filters.get('limit'):
-                    params['limit'] = filters['limit']
-                if filters.get('offset'):
-                    params['offset'] = filters['offset']
+                    query += " AND status = ?"
+                    params.append(filters['status'])
             
-            response = requests.get(STAGING_DATA_ENDPOINT, params=params, timeout=30)
-            response.raise_for_status()
+            # Add ordering
+            query += " ORDER BY date DESC, employee_name"
             
-            data = response.json()
+            # Add limit and offset
+            limit = filters.get('limit', 50) if filters else 50
+            offset = filters.get('offset', 0) if filters else 0
+            query += " LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
+            
+            # Execute query
+            records = self.db_manager.execute_query(query, params)
+            
+            # Get total count for pagination
+            count_query = "SELECT COUNT(*) as total FROM staging_attendance WHERE 1=1"
+            count_params = []
+            
+            if filters:
+                if filters.get('employee_name'):
+                    count_query += " AND employee_name LIKE ?"
+                    count_params.append(f"%{filters['employee_name']}%")
+                if filters.get('date_from'):
+                    count_query += " AND date >= ?"
+                    count_params.append(filters['date_from'])
+                if filters.get('date_to'):
+                    count_query += " AND date <= ?"
+                    count_params.append(filters['date_to'])
+                if filters.get('status'):
+                    count_query += " AND status = ?"
+                    count_params.append(filters['status'])
+            
+            total_result = self.db_manager.execute_query(count_query, count_params)
+            total = total_result[0]['total'] if total_result else 0
+            
+            # Format response
+            data = {
+                'data': records,
+                'total': total,
+                'page': (offset // limit) + 1,
+                'per_page': limit,
+                'success': True
+            }
             
             # Cache the data
             self.cached_data = data
             self.cache_timestamp = datetime.now()
             
-            logger.info(f"Successfully fetched {len(data.get('data', []))} staging records")
+            logger.info(f"Successfully fetched {len(records)} staging records from database")
             return data
             
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Error fetching staging data: {e}")
-            return {
-                'error': f'Failed to fetch data from API: {str(e)}',
-                'data': [],
-                'total': 0,
-                'page': 1,
-                'per_page': 50
-            }
         except Exception as e:
-            logger.error(f"Unexpected error: {e}")
+            logger.error(f"Error fetching staging data from database: {e}")
             return {
-                'error': f'Unexpected error: {str(e)}',
+                'error': f'Failed to fetch data from database: {str(e)}',
                 'data': [],
                 'total': 0,
                 'page': 1,
-                'per_page': 50
+                'per_page': 50,
+                'success': False
             }
     
     def _is_cache_valid(self) -> bool:
@@ -226,13 +257,13 @@ def load_default_config():
         }
     }
 
+# Initialize database manager first
+database_manager = DatabaseManager()
+
 # Initialize data manager, automation service, and exclusion validator
-staging_manager = StagingDataManager()
+staging_manager = StagingDataManager(database_manager)
 automation_service = get_automation_service(load_default_config())
 exclusion_validator = EmployeeExclusionValidator()
-
-# Initialize enhanced processor for web driver functionality
-processor = RealAPIDataProcessor()
 is_browser_ready = False
 automation_mode = 'testing'
 current_progress = {
@@ -248,19 +279,13 @@ processed_data = []
 
 # Helper functions for enhanced functionality
 async def fetch_grouped_staging_data():
-    """Fetch grouped staging data from API endpoint"""
+    """Fetch grouped staging data from database"""
     try:
-        api_url = "http://localhost:5173/api/staging/data-grouped"
-        logger.info("🌐 Fetching grouped staging data from enhanced API...")
+        logger.info("🗄️ Fetching grouped staging data from database...")
         
-        response = requests.get(api_url, timeout=30)
-        response.raise_for_status()
+        grouped_data = database_manager.fetch_grouped_staging_data()
         
-        response_data = response.json()
-        
-        if isinstance(response_data, dict) and 'data' in response_data:
-            grouped_data = response_data['data']
-            
+        if grouped_data:
             total_employees = len(grouped_data)
             total_records = sum(len(emp.get('data_presensi', [])) for emp in grouped_data)
             
@@ -268,7 +293,7 @@ async def fetch_grouped_staging_data():
             
             return grouped_data
         else:
-            logger.error("❌ Invalid grouped data structure")
+            logger.error("❌ No data found in database")
             return []
             
     except Exception as e:
@@ -288,8 +313,8 @@ def filter_excluded_employees_grouped(grouped_data):
         excluded_employees = []
         
         for i, employee_group in enumerate(grouped_data):
-            identitas = employee_group.get('identitas_karyawan', {})
-            employee_name = identitas.get('employee_name', '')
+            # Use the correct structure from DatabaseManager
+            employee_name = employee_group.get('employee_name', '')
             
             logger.info(f"🔍 Processing group {i+1}: employee_name='{employee_name}'")
             
@@ -379,12 +404,12 @@ def flatten_grouped_data_for_selection(grouped_data):
         flattened_data = []
         
         for i, employee_group in enumerate(grouped_data):
-            identitas = employee_group.get('identitas_karyawan', {})
-            employee_name = identitas.get('employee_name', 'Unknown')
-            employee_id_ptrj = identitas.get('employee_id_ptrj', '')
-            employee_id_venus = identitas.get('employee_id_venus', '')
+            # Use the correct structure from DatabaseManager
+            employee_name = employee_group.get('employee_name', 'Unknown')
+            employee_id = employee_group.get('employee_id', '')
+            ptrj_employee_id = employee_group.get('ptrj_employee_id', '')
             
-            logger.info(f"🔍 Group {i+1}: employee_name='{employee_name}', employee_id_ptrj='{employee_id_ptrj}', employee_id_venus='{employee_id_venus}'")
+            logger.info(f"🔍 Group {i+1}: employee_name='{employee_name}', employee_id='{employee_id}', ptrj_employee_id='{ptrj_employee_id}'")
             
             data_presensi = employee_group.get('data_presensi', [])
             logger.info(f"🔍 Group {i+1}: Found {len(data_presensi)} attendance records")
@@ -397,13 +422,15 @@ def flatten_grouped_data_for_selection(grouped_data):
                 logger.info(f"🔍 Group {i+1}, Entry {j+1}: {entry}")
                 flattened_entry = {
                     'employee_name': employee_name,
-                    'employee_id_ptrj': employee_id_ptrj,
-                    'employee_id_venus': employee_id_venus,
+                    'employee_id': employee_id,
+                    'ptrj_employee_id': ptrj_employee_id,
                     'date': entry.get('date', ''),
                     'regular_hours': entry.get('regular_hours', 0),
                     'overtime_hours': entry.get('overtime_hours', 0),
                     'total_hours': entry.get('total_hours', 0),
                     'task_code': entry.get('task_code', ''),
+                    'station_code': entry.get('station_code', ''),
+                    'raw_charge_job': entry.get('raw_charge_job', ''),
                     'status': entry.get('status', 'staged'),
                     'is_overtime': entry.get('is_overtime', False),
                     'hours': entry.get('hours', 0),
@@ -465,7 +492,7 @@ def get_staging_data_grouped():
         try:
             # Use the correct function that maintains grouped structure
             grouped_data = loop.run_until_complete(fetch_grouped_staging_data())
-            logger.info(f"📊 Fetched {len(grouped_data)} employee groups from staging server")
+            logger.info(f"📊 Fetched {len(grouped_data)} employee groups from database")
             
             # Apply exclusion filtering
             filtered_grouped_data = filter_excluded_employees_grouped(grouped_data)
@@ -648,8 +675,8 @@ def process_selected_data_background(selected_data):
                 employee_groups[employee_name] = {
                     'identitas_karyawan': {
                         'employee_name': employee_name,
-                        'employee_id_ptrj': record.get('employee_id_ptrj', ''),
-                        'employee_id_venus': record.get('employee_id_venus', '')
+                        'ptrj_employee_id': record.get('ptrj_employee_id', ''),
+                        'employee_id': record.get('employee_id', '')
                     },
                     'data_presensi': []
                 }
@@ -818,16 +845,14 @@ def process_selected_records():
 def get_employees():
     """Get unique employee names for filter dropdown"""
     try:
-        data = staging_manager.fetch_staging_data()
-        
-        if data.get('error'):
-            return jsonify({'error': data['error']}), 500
+        # Get data directly from database
+        grouped_data = database_manager.fetch_grouped_staging_data()
         
         # Extract unique employee names
         employees = set()
-        for record in data.get('data', []):
-            if record.get('employee_name'):
-                employees.add(record['employee_name'])
+        for employee_group in grouped_data:
+            if employee_group.get('employee_name'):
+                employees.add(employee_group['employee_name'])
         
         return jsonify(sorted(list(employees)))
         
@@ -1043,7 +1068,7 @@ def static_files(filename):
 
 if __name__ == '__main__':
     logger.info("Starting Data Interface Web Application")
-    logger.info(f"API Endpoint: {STAGING_DATA_ENDPOINT}")
+    logger.info("Using direct database access to staging_attendance.db")
     
     # Run the Flask app with improved connection handling
     app.run(

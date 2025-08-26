@@ -11,7 +11,6 @@ import asyncio
 import threading
 import time
 import webbrowser
-import requests
 import pyodbc
 from pathlib import Path
 from typing import Dict, Any, List, Optional
@@ -21,11 +20,13 @@ from dateutil.relativedelta import relativedelta
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-# Import the RealAPIDataProcessor from core
-from core.api_data_automation import RealAPIDataProcessor
-
 # Import employee exclusion validator
 from core.employee_exclusion_validator import EmployeeExclusionValidator
+
+# Import database manager for direct database access
+from core.database_manager import DatabaseManager
+# Import processor for browser automation
+from core.api_data_automation import RealAPIDataProcessor
 
 
 class EnhancedUserControlledAutomationSystem:
@@ -35,12 +36,11 @@ class EnhancedUserControlledAutomationSystem:
     
     def __init__(self):
         self.logger = logging.getLogger(__name__)
-        # Use new grouped API endpoint - connect to external staging server
-        self.api_url = "http://localhost:5173/api/staging/data-grouped"
-        self.web_server_thread = None
-        
-        # Use the EXACT same processor from test_real_api_data.py
+        # Initialize database manager for direct database access
+        self.db_manager = DatabaseManager()
+        # Initialize processor for browser automation
         self.processor = RealAPIDataProcessor()
+        self.web_server_thread = None
         self.is_browser_ready = False
         self.automation_mode = 'testing'  # Default mode
         
@@ -64,6 +64,39 @@ class EnhancedUserControlledAutomationSystem:
         
         # Enhanced logging configuration
         self._setup_enhanced_logging()
+    
+    def _verify_webdriver_connection(self) -> bool:
+        """Verify that WebDriver is properly connected and responsive"""
+        try:
+            if not self.is_browser_ready:
+                return False
+                
+            if not hasattr(self, 'processor') or not self.processor:
+                return False
+                
+            if not hasattr(self.processor, 'browser_manager') or not self.processor.browser_manager:
+                return False
+                
+            driver = self.processor.browser_manager.get_driver()
+            if not driver:
+                return False
+                
+            # Test driver responsiveness - PersistentBrowserManager uses is_driver_healthy()
+            if hasattr(self.processor.browser_manager, 'is_driver_healthy'):
+                return self.processor.browser_manager.is_driver_healthy()
+            elif hasattr(self.processor.browser_manager, 'is_driver_alive'):
+                return self.processor.browser_manager.is_driver_alive()
+            else:
+                # Fallback: try to access current_url directly
+                try:
+                    _ = driver.current_url
+                    return True
+                except Exception:
+                    return False
+            
+        except Exception as e:
+            self.logger.error(f"WebDriver connection verification failed: {e}")
+            return False
         
     def _setup_enhanced_logging(self):
         """Setup enhanced logging for WebDriver debugging"""
@@ -235,35 +268,30 @@ class EnhancedUserControlledAutomationSystem:
             return False
     
     async def fetch_grouped_staging_data(self) -> List[Dict]:
-        """Fetch grouped staging data from new API endpoint"""
+        """Fetch grouped staging data directly from database"""
         try:
-            self.logger.info("🌐 Fetching grouped staging data from enhanced API...")
+            self.logger.info("🗄️ Fetching grouped staging data from database...")
             
-            response = requests.get(self.api_url, timeout=30)
-            response.raise_for_status()
+            # Fetch grouped data from database
+            grouped_data = self.db_manager.fetch_grouped_staging_data()
             
-            response_data = response.json()
-            
-            if isinstance(response_data, dict) and 'data' in response_data:
-                grouped_data = response_data['data']
-                
+            if grouped_data:
                 total_employees = len(grouped_data)
                 total_records = sum(len(emp.get('data_presensi', [])) for emp in grouped_data)
                 
                 self.logger.info(f"📊 Grouped data received: {total_employees} employees, {total_records} attendance records")
                 
-                # Log enhancement info
-                if 'charge_job_enhancement' in response_data:
-                    enhancement = response_data['charge_job_enhancement']
-                    self.logger.info(f"🔧 Charge job enhancement: {enhancement.get('enabled', False)}, {enhancement.get('records_enhanced', 0)} records")
+                # Log database stats
+                db_stats = self.db_manager.get_database_stats()
+                self.logger.info(f"🗄️ Database stats: {db_stats.get('total_records', 0)} total records, {db_stats.get('unique_employees', 0)} unique employees")
                 
                 return grouped_data
             else:
-                self.logger.error("❌ Invalid grouped data structure")
+                self.logger.error("❌ No grouped data found in database")
                 return []
                 
         except Exception as e:
-            self.logger.error(f"❌ Error fetching grouped staging data: {e}")
+            self.logger.error(f"❌ Error fetching grouped staging data from database: {e}")
             return []
     
     def _filter_excluded_employees_grouped(self, grouped_data: List[Dict]) -> List[Dict]:
@@ -362,38 +390,45 @@ class EnhancedUserControlledAutomationSystem:
             flattened_records = []
             
             for employee_group in grouped_data:
-                identitas = employee_group.get('identitas_karyawan', {})
+                # Get employee identity data from top level (database structure)
+                employee_name = employee_group.get('employee_name', '').strip()
+                employee_id = employee_group.get('employee_id', '').strip()
+                ptrj_employee_id = employee_group.get('ptrj_employee_id', '').strip()
                 data_presensi = employee_group.get('data_presensi', [])
                 
                 for attendance in data_presensi:
                     # Combine identity and attendance data
                     flat_record = {
-                        # Identity data (with string trimming for clean data)
-                        'employee_name': identitas.get('employee_name', '').strip(),
-                        'employee_id_venus': identitas.get('employee_id_venus', '').strip(),
-                        'employee_id_ptrj': identitas.get('employee_id_ptrj', '').strip(),
-                        'task_code': identitas.get('task_code', '').strip(),
-                        'station_code': identitas.get('station_code', '').strip(),
-                        'machine_code': identitas.get('machine_code', '').strip(),
-                        'expense_code': identitas.get('expense_code', '').strip(),
-                        'raw_charge_job': identitas.get('raw_charge_job', '').strip(),
+                        # Identity data (from employee group level)
+                        'employee_name': employee_name,
+                        'employee_id': employee_id,
+                        'ptrj_employee_id': ptrj_employee_id,
+                        'task_code': attendance.get('task_code', '').strip(),
+                        'station_code': attendance.get('station_code', '').strip(),
+                        'machine_code': attendance.get('machine_code', '').strip(),
+                        'expense_code': attendance.get('expense_code', '').strip(),
+                        'raw_charge_job': attendance.get('raw_charge_job', '').strip(),
                         
                         # Attendance data
                         'id': attendance.get('id', ''),
                         'date': attendance.get('date', ''),
+                        'day_of_week': attendance.get('day_of_week', ''),
                         'shift': attendance.get('shift', ''),
                         'check_in': attendance.get('check_in', ''),
                         'check_out': attendance.get('check_out', ''),
                         'regular_hours': attendance.get('regular_hours', 0),
                         'overtime_hours': attendance.get('overtime_hours', 0),
                         'total_hours': attendance.get('total_hours', 0),
-                        'status': attendance.get('status', ''),
-                        'created_at': attendance.get('created_at', ''),
+                        'leave_type_code': attendance.get('leave_type_code', ''),
+                        'leave_type_description': attendance.get('leave_type_description', ''),
+                        'leave_ref_number': attendance.get('leave_ref_number', ''),
+                        'is_alfa': attendance.get('is_alfa', False),
+                        'is_on_leave': attendance.get('is_on_leave', False),
                         'notes': attendance.get('notes', ''),
+                        'status': 'staged',  # Default status from database
                         
                         # Additional metadata
-                        'source_record_id': attendance.get('source_record_id', ''),
-                        'transfer_status': attendance.get('transfer_status', '')
+                        'source_record_id': attendance.get('source_record_id', '')
                     }
                     
                     flattened_records.append(flat_record)
@@ -430,49 +465,93 @@ class EnhancedUserControlledAutomationSystem:
         Args:
             selected_data: Either List[int] (indices) or List[Dict] (actual records)
         """
+        start_time = time.time()  # Initialize start_time for processing duration calculation
+        
         try:
+            print(f"\n" + "="*80)
+            print(f"🚀 PROCESS_SELECTED_RECORDS - DETAILED EXECUTION LOG")
+            print(f"="*80)
+            print(f"📊 Input data type: {type(selected_data)}")
+            print(f"📊 Input data length: {len(selected_data) if selected_data else 0}")
+            print(f"🔧 Automation mode: {self.automation_mode.upper()}")
+            print(f"🌐 Browser ready: {self.is_browser_ready}")
+            
             if not self.is_browser_ready:
-                print("❌ Browser system not ready")
+                print("❌ BROWSER SYSTEM NOT READY - EXITING")
                 return False
             
             self.update_progress('initializing')
             
             # Handle different input types
             if not selected_data:
-                print("❌ No data selected")
+                print("❌ NO DATA SELECTED - EXITING")
                 return False
+            
+            # Display raw input data structure
+            print(f"\n📋 RAW INPUT DATA STRUCTURE:")
+            print("-" * 80)
+            print(json.dumps(selected_data, indent=2, ensure_ascii=False, default=str))
             
             # Check if input is indices or actual records
             if isinstance(selected_data[0], int):
                 # Input is indices - fetch and filter data
+                print(f"\n🔍 INPUT IS INDICES - FETCHING ACTUAL RECORDS...")
+                print(f"📋 Indices to process: {selected_data}")
+                
                 print("🌐 Fetching grouped staging data...")
                 grouped_data = await self.fetch_grouped_staging_data()
                 
                 if not grouped_data:
-                    print("❌ No grouped staging data available")
+                    print("❌ NO GROUPED STAGING DATA AVAILABLE - EXITING")
                     return False
                 
+                print(f"✅ Fetched {len(grouped_data)} grouped records")
+                
                 # Apply exclusion filtering
+                print("🔍 Applying exclusion filtering...")
                 grouped_data = self._filter_excluded_employees_grouped(grouped_data)
+                print(f"✅ After filtering: {len(grouped_data)} records")
                 
                 # Flatten for selection processing
+                print("🔄 Flattening data for selection...")
                 all_records = self.flatten_grouped_data_for_selection(grouped_data)
+                print(f"✅ Flattened to {len(all_records)} individual records")
                 
                 # Get selected records based on indices
+                print(f"\n🎯 EXTRACTING SELECTED RECORDS BY INDICES:")
                 selected_records = []
-                for index in selected_data:
+                for i, index in enumerate(selected_data):
                     if 0 <= index < len(all_records):
-                        selected_records.append(all_records[index])
+                        record = all_records[index]
+                        selected_records.append(record)
+                        print(f"✅ Index {index}: {record.get('employee_name', 'Unknown')} - {record.get('date', 'No date')}")
+                        
+                        # Display complete record structure
+                        print(f"   📋 Complete record structure:")
+                        print(json.dumps(record, indent=6, ensure_ascii=False, default=str))
                     else:
-                        print(f"⚠️ Invalid index {index}, skipping")
+                        print(f"⚠️ Invalid index {index}, skipping (max: {len(all_records)-1})")
                 
                 if not selected_records:
-                    print("❌ No valid records selected")
+                    print("❌ NO VALID RECORDS SELECTED - EXITING")
                     return False
             else:
                 # Input is actual records - use directly
                 selected_records = selected_data
-                print(f"📊 Processing {len(selected_records)} pre-selected records")
+                print(f"\n📊 INPUT IS ACTUAL RECORDS - PROCESSING {len(selected_records)} PRE-SELECTED RECORDS")
+                
+                # Display each record structure
+                print(f"\n📋 COMPLETE RECORD STRUCTURES:")
+                for i, record in enumerate(selected_records, 1):
+                    print(f"\n🎯 RECORD #{i}:")
+                    print("-" * 60)
+                    print(json.dumps(record, indent=2, ensure_ascii=False, default=str))
+                    print(f"\n🔑 KEY FIELDS:")
+                    print(f"   👤 Employee: {record.get('employee_name', 'N/A')}")
+                    print(f"   🆔 PTRJ ID: {record.get('ptrj_employee_id', 'N/A')}")
+                    print(f"   📅 Date: {record.get('date', 'N/A')}")
+                    print(f"   ⏰ Hours: {record.get('hours', 'N/A')}")
+                    print(f"   🔘 Transaction Type: {record.get('transaction_type', 'N/A')}")
             
             # Create entries using EXACT same logic from test_real_api_data.py
             all_entries = []
@@ -486,11 +565,14 @@ class EnhancedUserControlledAutomationSystem:
             
             self.update_progress('processing', total=len(all_entries))
             
-            # Get driver using same method
-            driver = self.processor.browser_manager.get_driver()
+            # Enhanced WebDriver validation and recovery
+            driver = self._get_validated_driver_with_recovery()
             if not driver:
-                print("❌ WebDriver not available")
+                print("❌ WebDriver not available after recovery attempts")
                 return False
+            
+            # Log initial driver state
+            self._log_driver_state(driver, "Before processing loop")
             
             # Process each entry with progress tracking
             successful_entries = 0
@@ -517,14 +599,28 @@ class EnhancedUserControlledAutomationSystem:
                     failed_entries
                 )
                 
-                # Process single record
-                success = await self.process_single_record_enhanced(driver, entry, i, len(all_entries))
+                # Validate driver before processing each record
+                if not self._verify_webdriver_connection():
+                    print(f"⚠️ WebDriver connection lost at entry {i}, attempting recovery...")
+                    driver = self._get_validated_driver_with_recovery()
+                    if not driver:
+                        print(f"❌ Failed to recover WebDriver at entry {i}")
+                        failed_entries += 1
+                        continue
+                
+                # Process single record with enhanced error handling
+                try:
+                    success = await self.process_single_record_enhanced(driver, entry, i, len(all_entries))
+                except Exception as e:
+                    print(f"❌ Exception during record processing: {e}")
+                    self.logger.error(f"Record processing exception: {e}")
+                    success = False
                 
                 if success:
                     successful_entries += 1
                     # Store processed data for crosscheck
                     self.processed_data.append({
-                        'employee_id_ptrj': entry.get('employee_id_ptrj', ''),
+                        'ptrj_employee_id': entry.get('ptrj_employee_id', ''),
                         'employee_name': employee_name,
                         'transaction_date': self.calculate_transaction_date_by_mode(entry_date, self.automation_mode),
                         'transaction_type': entry.get('transaction_type', 'Normal'),
@@ -542,7 +638,9 @@ class EnhancedUserControlledAutomationSystem:
                     print(f"⏳ Waiting 3 seconds before next entry...")
                     await asyncio.sleep(3)
             
-            # Final summary
+            # Final summary with comprehensive details
+            end_time = time.time()
+            total_processing_time = end_time - start_time
             success_rate = (successful_entries / len(all_entries)) * 100 if all_entries else 0
             
             self.update_progress(
@@ -553,15 +651,32 @@ class EnhancedUserControlledAutomationSystem:
                 failed=failed_entries
             )
             
-            print(f"\n🎯 AUTOMATION COMPLETE!")
-            print(f"📊 Total Entries: {len(all_entries)}")
-            print(f"✅ Successful: {successful_entries}/{len(all_entries)}")
-            print(f"❌ Failed: {failed_entries}/{len(all_entries)}")
-            print(f"📈 Success Rate: {success_rate:.1f}%")
+            print(f"\n" + "="*80)
+            print(f"🎉 ===== AUTOMATION BATCH COMPLETED =====\n")
+            print(f"📊 FINAL AUTOMATION SUMMARY:")
+            print(f"   🔢 Total Records Processed: {len(all_entries)}")
+            print(f"   ✅ Successful Records: {successful_entries}")
+            print(f"   ❌ Failed Records: {failed_entries}")
+            print(f"   📈 Success Rate: {success_rate:.1f}%")
+            print(f"   ⏱️ Total Processing Time: {total_processing_time:.2f} seconds")
+            print(f"   🎯 Automation Mode: {self.automation_mode.upper()}")
+            
+            if successful_entries > 0:
+                avg_time_per_record = total_processing_time / successful_entries
+                print(f"   ⚡ Average Time per Successful Record: {avg_time_per_record:.2f} seconds")
+            
+            print(f"\n🔍 NEXT STEPS:")
+            if successful_entries > 0:
+                print(f"   ✅ Starting crosscheck validation for {successful_entries} successful records...")
+                print(f"   🔍 Verifying data integrity in Millware database...")
+            else:
+                print(f"   ⚠️ No successful records to validate")
+                print(f"   🔧 Please check WebDriver connection and field mapping")
+            
+            print(f"\n" + "="*80 + "\n")
             
             # Trigger crosscheck if successful entries exist
             if successful_entries > 0:
-                print(f"\n🔍 Starting crosscheck validation...")
                 await self.perform_crosscheck()
             
             return successful_entries > 0
@@ -609,7 +724,7 @@ class EnhancedUserControlledAutomationSystem:
             for i, entry in enumerate(self.processed_data, 1):
                 print(f"\n🔍 Crosscheck {i}/{total_checks}")
                 print(f"👤 Employee: {entry['employee_name']}")
-                print(f"🆔 Employee ID (PTRJ): {entry['employee_id_ptrj']}")
+                print(f"🆔 Employee ID (PTRJ): {entry['ptrj_employee_id']}")
                 print(f"📅 Transaction Date: {entry['transaction_date']}")
                 print(f"🔘 Type: {'Overtime' if entry['is_overtime'] else 'Regular'}")
                 print(f"⏰ Hours: {entry['hours']}")
@@ -636,7 +751,7 @@ class EnhancedUserControlledAutomationSystem:
                     trx_date = entry['transaction_date']
                 
                 # Prepare employee ID with POM prefix if needed
-                employee_id = entry['employee_id_ptrj']
+                employee_id = entry['ptrj_employee_id']
                 if employee_id and not employee_id.startswith('POM'):
                     employee_id = f"POM{employee_id}"
                 
@@ -884,13 +999,80 @@ class EnhancedUserControlledAutomationSystem:
             @app.route('/api/process-selected', methods=['POST'])
             def process_selected():
                 try:
+                    print("\n" + "="*80)
+                    print("🔥 ENDPOINT /api/process-selected CALLED!")
+                    print("="*80)
+                    
+                    # Get and log raw request data
                     data = request.get_json()
+                    print(f"📦 RAW REQUEST DATA:")
+                    print(json.dumps(data, indent=2, ensure_ascii=False))
+                    
                     selected_indices = data.get('selected_indices', [])
                     automation_mode = data.get('automation_mode', 'testing')
                     bypass_validation = data.get('bypass_validation', False)
                     
+                    print(f"\n📋 PARSED REQUEST PARAMETERS:")
+                    print(f"   🔢 Selected indices: {selected_indices}")
+                    print(f"   🔧 Automation mode: {automation_mode.upper()}")
+                    print(f"   ⚡ Bypass validation: {bypass_validation}")
+                    print(f"   📊 Total selected: {len(selected_indices)} records")
+                    
                     if not selected_indices:
+                        print("❌ ERROR: No records selected")
                         return jsonify({'error': 'No records selected'}), 400
+                    
+                    # Fetch and display complete selected data structure
+                    print(f"\n🔍 FETCHING COMPLETE DATA STRUCTURE FOR SELECTED RECORDS...")
+                    try:
+                        # Get all staging data to show selected records
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        
+                        try:
+                            grouped_data = loop.run_until_complete(self.fetch_grouped_staging_data())
+                            filtered_grouped_data = self._filter_excluded_employees_grouped(grouped_data)
+                            flattened_data = self.flatten_grouped_data_for_selection(filtered_grouped_data)
+                            
+                            # Display selected records with complete JSON structure
+                            print(f"\n📊 COMPLETE SELECTED DATA STRUCTURE:")
+                            print("="*80)
+                            
+                            selected_records = []
+                            for i, index in enumerate(selected_indices):
+                                if 0 <= index < len(flattened_data):
+                                    record = flattened_data[index]
+                                    selected_records.append(record)
+                                    
+                                    print(f"\n🎯 SELECTED RECORD #{i+1} (Index: {index}):")
+                                    print("-" * 60)
+                                    print(json.dumps(record, indent=2, ensure_ascii=False, default=str))
+                                    
+                                    # Extract key fields for mapping verification
+                                    print(f"\n🔑 KEY FIELD MAPPING:")
+                                    print(f"   👤 Employee Name: {record.get('employee_name', 'N/A')}")
+                                    print(f"   🆔 PTRJ Employee ID: {record.get('ptrj_employee_id', 'N/A')}")
+                                    print(f"   📅 Date: {record.get('date', 'N/A')}")
+                                    print(f"   ⏰ Hours: {record.get('hours', 'N/A')}")
+                                    print(f"   🔘 Transaction Type: {record.get('transaction_type', 'N/A')}")
+                                    print(f"   💼 Raw Charge Job: {record.get('raw_charge_job', 'N/A')}")
+                                    print(f"   🏢 Department: {record.get('department', 'N/A')}")
+                                    print(f"   📍 Location: {record.get('location', 'N/A')}")
+                                else:
+                                    print(f"⚠️ WARNING: Invalid index {index}, skipping")
+                            
+                            print(f"\n📈 SELECTION SUMMARY:")
+                            print(f"   ✅ Valid records: {len(selected_records)}")
+                            print(f"   ❌ Invalid indices: {len(selected_indices) - len(selected_records)}")
+                            print(f"   📊 Total requested: {len(selected_indices)}")
+                            
+                        finally:
+                            loop.close()
+                            
+                    except Exception as data_fetch_error:
+                        print(f"❌ ERROR FETCHING DATA STRUCTURE: {data_fetch_error}")
+                        import traceback
+                        print(f"📋 Stack trace: {traceback.format_exc()}")
                     
                     # Set automation mode
                     self.automation_mode = automation_mode
@@ -903,26 +1085,114 @@ class EnhancedUserControlledAutomationSystem:
                     # Reset processed data for new automation
                     self.processed_data = []
                     
-                    # Create a new event loop for the async function in a thread
-                    def run_automation():
+                    # Send signal to web driver by refreshing the page
+                    print(f"\n🔄 SENDING SIGNAL TO WEB DRIVER...")
+                    print("="*60)
+                    
+                    def refresh_webdriver():
                         try:
+                            # Get driver from processor's browser manager
+                            driver = None
+                            if hasattr(self, 'processor') and self.processor and hasattr(self.processor, 'browser_manager'):
+                                driver = self.processor.browser_manager.get_driver()
+                            
+                            if driver:
+                                print(f"🌐 Web driver found, refreshing page...")
+                                driver.refresh()
+                                print(f"✅ Web driver page refreshed successfully!")
+                                print(f"🔗 Current URL: {driver.current_url}")
+                                print(f"📄 Page title: {driver.title}")
+                                print(f"🔄 Browser ready state: {self.is_browser_ready}")
+                                
+                                # Verify driver is still responsive
+                                is_responsive = False
+                                if hasattr(self.processor.browser_manager, 'is_driver_healthy'):
+                                    is_responsive = self.processor.browser_manager.is_driver_healthy()
+                                elif hasattr(self.processor.browser_manager, 'is_driver_alive'):
+                                    is_responsive = self.processor.browser_manager.is_driver_alive()
+                                else:
+                                    try:
+                                        _ = driver.current_url
+                                        is_responsive = True
+                                    except Exception:
+                                        is_responsive = False
+                                
+                                if is_responsive:
+                                    print(f"✅ Web driver connection verified - UI ↔ WebDriver communication active!")
+                                else:
+                                    print(f"⚠️ Web driver connection issue detected")
+                            else:
+                                print(f"⚠️ Web driver not found or not initialized")
+                                print(f"💡 Tip: Make sure to initialize browser system first")
+                                print(f"🔍 Debug info:")
+                                print(f"   - Processor exists: {hasattr(self, 'processor') and self.processor is not None}")
+                                print(f"   - Browser manager exists: {hasattr(self.processor, 'browser_manager') if hasattr(self, 'processor') and self.processor else False}")
+                                print(f"   - Browser ready: {self.is_browser_ready}")
+                        except Exception as e:
+                            print(f"❌ Error refreshing web driver: {e}")
+                            import traceback
+                            print(f"📋 Stack trace: {traceback.format_exc()}")
+                    
+                    # Execute web driver refresh in a separate thread
+                    refresh_thread = threading.Thread(target=refresh_webdriver, daemon=True)
+                    refresh_thread.start()
+                    
+                    # Wait for refresh to complete and verify connection
+                    refresh_thread.join(timeout=5.0)  # Wait up to 5 seconds for refresh
+                    
+                    # Additional connection verification
+                    connection_status = self._verify_webdriver_connection()
+                    
+                    print(f"\n🎯 CONNECTION TEST COMPLETED:")
+                    print(f"   📊 Data displayed in console: ✅")
+                    print(f"   🔄 Web driver refresh signal sent: ✅")
+                    print(f"   🔗 UI ↔ WebDriver connection test: {'✅' if connection_status else '❌'}")
+                    
+                    if not connection_status:
+                        print(f"\n⚠️ CONNECTION ISSUE DETECTED:")
+                        print(f"   🔧 Please ensure browser system is initialized first")
+                        print(f"   🔄 Try refreshing the web interface")
+                        print(f"   🌐 Check if browser window is still open")
+                        return jsonify({'error': 'WebDriver connection failed'}), 500
+                    
+                    # **FIX: Actually start the automation processing**
+                    print(f"\n🚀 STARTING AUTOMATION PROCESSING...")
+                    print("="*80)
+                    
+                    def start_automation_processing():
+                        """Start automation processing in a separate thread"""
+                        try:
+                            # Create new event loop for this thread
                             loop = asyncio.new_event_loop()
                             asyncio.set_event_loop(loop)
-                            loop.run_until_complete(self.process_selected_records(selected_indices))
+                            
+                            # Run the actual automation processing
+                            result = loop.run_until_complete(self.process_selected_records(selected_indices))
+                            
+                            if result:
+                                print(f"✅ AUTOMATION PROCESSING COMPLETED SUCCESSFULLY!")
+                            else:
+                                print(f"❌ AUTOMATION PROCESSING FAILED!")
+                                
                         except Exception as e:
-                            print(f"❌ Automation thread error: {e}")
-                            self.logger.error(f"Automation thread error: {e}")
+                            print(f"❌ AUTOMATION PROCESSING ERROR: {e}")
+                            import traceback
+                            print(f"📋 Stack trace: {traceback.format_exc()}")
                         finally:
                             loop.close()
                     
-                    automation_thread = threading.Thread(target=run_automation, daemon=True)
+                    # Start automation processing in background thread
+                    automation_thread = threading.Thread(target=start_automation_processing, daemon=True)
                     automation_thread.start()
+                    
+                    print(f"🎯 AUTOMATION THREAD STARTED - Processing will continue in background")
                     
                     return jsonify({
                         'success': True,
-                        'message': f'Processing {len(selected_indices)} selected records with crosscheck validation',
+                        'message': f'Started processing {len(selected_indices)} selected records with automation',
                         'selected_count': len(selected_indices),
                         'automation_mode': automation_mode,
+                        'processing_started': True,
                         'crosscheck_enabled': True
                     })
                     
@@ -991,12 +1261,25 @@ class EnhancedUserControlledAutomationSystem:
             from selenium.webdriver.common.keys import Keys
             
             employee_name = record.get('employee_name', '')
+            employee_id_ptrj = record.get('ptrj_employee_id', '')
             date_value = record.get('date', '')
             raw_charge_job = record.get('raw_charge_job', '')
             transaction_type = record.get('transaction_type', 'Normal')
             
             # Calculate working hours using business logic
             calculated_hours = self.calculate_working_hours(record, transaction_type)
+            
+            # ENHANCED CONSOLE LOGGING FOR WEBDRIVER DEBUGGING
+            print(f"\n🚀 ===== WEBDRIVER AUTOMATION START =====\n")
+            print(f"📋 RECORD DETAILS:")
+            print(f"   🔢 Record Index: {record_index}/{total_records}")
+            print(f"   👤 Employee Name: {employee_name}")
+            print(f"   🆔 PTRJ Employee ID: {employee_id_ptrj}")
+            print(f"   📅 Original Date: {date_value}")
+            print(f"   🔘 Transaction Type: {transaction_type}")
+            print(f"   ⏰ Calculated Hours: {calculated_hours}")
+            print(f"   💼 Raw Charge Job: {raw_charge_job}")
+            print(f"   🎯 Automation Mode: {self.automation_mode}")
             
             # Log record processing start
             self._log_automation_step("Record Processing Start", {
@@ -1013,8 +1296,12 @@ class EnhancedUserControlledAutomationSystem:
             
             self.logger.info(f"🎯 Processing record {record_index}/{total_records}: {employee_name}")
             
-            # Step 0: Fill document date field
+            # STEP 0: DOCUMENT DATE FIELD
+            print(f"\n📅 STEP 0: FILLING DOCUMENT DATE FIELD")
             formatted_doc_date = self.calculate_document_date_by_mode(date_value, self.automation_mode)
+            print(f"   📅 Original Date: {date_value}")
+            print(f"   📅 Formatted Document Date: {formatted_doc_date}")
+            print(f"   🎯 Target Field: MainContent_txtDocDate")
             
             script = f"""
                 var docDateField = document.getElementById('MainContent_txtDocDate');
@@ -1026,11 +1313,19 @@ class EnhancedUserControlledAutomationSystem:
                 return false;
             """
             
-            driver.execute_script(script)
+            doc_result = driver.execute_script(script)
+            if doc_result:
+                print(f"   ✅ Document date field filled successfully: {formatted_doc_date}")
+            else:
+                print(f"   ⚠️ Document date field not found or failed to fill")
             await asyncio.sleep(1.5)
             
-            # Step 1: Fill transaction date field
+            # STEP 1: TRANSACTION DATE FIELD
+            print(f"\n📅 STEP 1: FILLING TRANSACTION DATE FIELD")
             formatted_trx_date = self.calculate_transaction_date_by_mode(date_value, self.automation_mode)
+            print(f"   📅 Original Date: {date_value}")
+            print(f"   📅 Formatted Transaction Date: {formatted_trx_date}")
+            print(f"   🎯 Target Field: MainContent_txtTrxDate")
             
             script = f"""
                 var dateField = document.getElementById('MainContent_txtTrxDate');
@@ -1044,59 +1339,140 @@ class EnhancedUserControlledAutomationSystem:
             
             result = driver.execute_script(script)
             if result:
+                print(f"   ✅ Transaction date field filled successfully: {formatted_trx_date}")
+                print(f"   ⌨️ Sending ENTER key to trigger date processing...")
                 date_field = driver.find_element(By.ID, "MainContent_txtTrxDate")
                 date_field.send_keys(Keys.ENTER)
                 await asyncio.sleep(2)
+                print(f"   ✅ Date processing triggered successfully")
             else:
+                print(f"   ❌ Transaction date field not found or failed to fill")
                 self.logger.error(f"❌ Failed to fill transaction date field")
                 return False
             
-            # Step 2: Fill employee field using enhanced autocomplete with Employee ID priority
+            # STEP 2: EMPLOYEE FIELD (PTRJ ID PRIORITY)
+            print(f"\n👤 STEP 2: FILLING EMPLOYEE FIELD (PTRJ ID PRIORITY)")
+            print(f"   👤 Employee Name: {employee_name}")
+            print(f"   🆔 PTRJ Employee ID: {employee_id_ptrj}")
+            print(f"   🎯 Target: First autocomplete field (.ui-autocomplete-input)")
+            
             autocomplete_fields = driver.find_elements(By.CSS_SELECTOR, ".ui-autocomplete-input")
+            print(f"   🔍 Found {len(autocomplete_fields)} autocomplete fields")
+            
             if len(autocomplete_fields) > 0:
                 employee_field = autocomplete_fields[0]
+                print(f"   🎯 Using first autocomplete field for employee input")
+                print(f"   🚀 Starting enhanced employee autocomplete with ID priority...")
+                
                 # Use enhanced employee autocomplete with ID priority
                 success = await self.smart_employee_autocomplete_input(driver, employee_field, record, "Employee")
-                if not success:
+                if success:
+                    print(f"   ✅ Employee field filled successfully")
+                else:
+                    print(f"   ❌ Employee field filling failed")
                     self.logger.error(f"❌ Failed to fill employee field: {employee_name}")
                     return False
                 await asyncio.sleep(2)
             else:
+                print(f"   ❌ No autocomplete fields found for employee input")
                 self.logger.error(f"❌ Employee autocomplete field not found")
                 return False
             
-            # Step 3: Select transaction type
+            # STEP 3: TRANSACTION TYPE SELECTION
+            print(f"\n🔘 STEP 3: SELECTING TRANSACTION TYPE")
+            print(f"   🔘 Transaction Type: {transaction_type}")
+            print(f"   🎯 Target: Radio button selection")
+            
             success = await self.processor.select_transaction_type(driver, transaction_type)
-            if not success:
+            if success:
+                print(f"   ✅ Transaction type selected successfully: {transaction_type}")
+            else:
+                print(f"   ❌ Transaction type selection failed: {transaction_type}")
                 self.logger.error(f"❌ Failed to select transaction type: {transaction_type}")
                 return False
             
-            # Step 4: Fill charge job components
+            # STEP 4: CHARGE JOB COMPONENTS
+            print(f"\n💼 STEP 4: FILLING CHARGE JOB COMPONENTS")
+            print(f"   💼 Raw Charge Job: {raw_charge_job}")
+            
             charge_components = self.processor.parse_raw_charge_job(raw_charge_job)
             if charge_components:
+                print(f"   🔧 Parsed Components: {charge_components}")
+                print(f"   🚀 Starting charge job autocomplete filling...")
+                
                 success = await self.fill_charge_job_smart_autocomplete(driver, charge_components)
-                if not success:
+                if success:
+                    print(f"   ✅ Charge job components filled successfully")
+                else:
+                    print(f"   ❌ Charge job components filling failed")
                     self.logger.error(f"❌ Failed to fill charge job components")
                     return False
+            else:
+                print(f"   ⚠️ No charge job components to fill")
             
-            # Step 5: Fill hours field
+            # STEP 5: HOURS FIELD
+            print(f"\n⏰ STEP 5: FILLING HOURS FIELD")
+            print(f"   ⏰ Calculated Hours: {calculated_hours}")
+            print(f"   🎯 Target: Hours input field")
+            
             success = await self.processor.fill_hours_field(driver, calculated_hours)
-            if not success:
+            if success:
+                print(f"   ✅ Hours field filled successfully: {calculated_hours}")
+            else:
+                print(f"   ❌ Hours field filling failed: {calculated_hours}")
                 self.logger.error(f"❌ Failed to fill hours field: {calculated_hours}")
                 return False
             
-            # Step 6: Enhanced Button Click Logic
+            # STEP 6: BUTTON CLICK LOGIC
+            print(f"\n🔘 STEP 6: ENHANCED BUTTON CLICK LOGIC")
             is_final_record = (record_index == total_records)
+            print(f"   🔢 Current Record: {record_index}/{total_records}")
+            print(f"   🏁 Is Final Record: {is_final_record}")
+            print(f"   🚀 Starting button click logic...")
+            
             success = await self.enhanced_button_click(driver, is_final_record, record_index, total_records)
             
             if success:
+                print(f"   ✅ Button click successful")
+                
+                # FINAL SUCCESS SUMMARY
+                end_time = time.time()
+                processing_time = end_time - start_time
+                print(f"\n🎉 ===== RECORD PROCESSING COMPLETED =====\n")
+                print(f"✅ PROCESSING SUMMARY:")
+                print(f"   🔢 Record: {record_index}/{total_records}")
+                print(f"   👤 Employee: {employee_name} (ID: {employee_id_ptrj})")
+                print(f"   📅 Date: {date_value} → Doc: {formatted_doc_date}, Trx: {formatted_trx_date}")
+                print(f"   🔘 Transaction Type: {transaction_type}")
+                print(f"   ⏰ Hours: {calculated_hours}")
+                print(f"   💼 Charge Job: {raw_charge_job}")
+                print(f"   ⏱️ Processing Time: {processing_time:.2f} seconds")
+                print(f"   🎯 Status: SUCCESS")
+                print(f"\n" + "="*50 + "\n")
+                
                 self.logger.info(f"✅ Record {record_index}/{total_records} processed successfully")
                 return True
             else:
+                print(f"   ❌ Button click failed")
+                print(f"\n💥 ===== RECORD PROCESSING FAILED =====\n")
+                print(f"❌ FAILURE SUMMARY:")
+                print(f"   🔢 Record: {record_index}/{total_records}")
+                print(f"   👤 Employee: {employee_name} (ID: {employee_id_ptrj})")
+                print(f"   🎯 Status: FAILED AT BUTTON CLICK")
+                print(f"\n" + "="*50 + "\n")
+                
                 self.logger.error(f"❌ Failed to click button for record {record_index}/{total_records}")
                 return False
                 
         except Exception as e:
+            print(f"\n💥 ===== RECORD PROCESSING ERROR =====\n")
+            print(f"❌ EXCEPTION DETAILS:")
+            print(f"   🔢 Record: {record_index}/{total_records}")
+            print(f"   👤 Employee: {employee_name}")
+            print(f"   🚨 Error: {str(e)}")
+            print(f"   🎯 Status: EXCEPTION OCCURRED")
+            print(f"\n" + "="*50 + "\n")
+            
             self.logger.error(f"❌ Record processing error: {e}")
             import traceback
             self.logger.error(f"📋 Stack trace: {traceback.format_exc()}")
@@ -1107,44 +1483,33 @@ class EnhancedUserControlledAutomationSystem:
         try:
             from selenium.webdriver.common.by import By
             
+            # Validate driver state before button click
+            if not self._verify_webdriver_connection():
+                print(f"❌ WebDriver connection lost before button click")
+                return False
+            
             if is_final_record:
-                # Final record: Click "New" button
+                # Final record: Click "New" button with enhanced retry
                 print(f"🔄 Final record ({record_index}/{total_records}) - Clicking 'New' button")
-                success = await self.click_new_button(driver)
+                success = await self._click_button_with_enhanced_retry(driver, 'new', max_retries=3)
                 if success:
                     print(f"✅ 'New' button clicked successfully - Form reset completed")
                     await asyncio.sleep(3)  # Wait for complete form reset
                     return True
                 else:
-                    print(f"❌ Failed to click 'New' button - attempting retry")
-                    await asyncio.sleep(2)
-                    success = await self.click_new_button(driver)
-                    if success:
-                        print(f"✅ 'New' button clicked on retry")
-                        await asyncio.sleep(3)
-                        return True
-                    else:
-                        print(f"❌ 'New' button failed on retry - marking batch as completed")
-                        return True  # Mark as completed regardless
+                    print(f"❌ 'New' button failed after all retries - marking batch as completed")
+                    return True  # Mark as completed regardless
             else:
-                # Non-final record: Click "Add" button
+                # Non-final record: Click "Add" button with enhanced retry
                 print(f"➕ Record {record_index}/{total_records} - Clicking 'Add' button")
-                success = await self.click_add_button(driver)
+                success = await self._click_button_with_enhanced_retry(driver, 'add', max_retries=3)
                 if success:
                     print(f"✅ 'Add' button clicked successfully - Waiting for form reset")
                     await asyncio.sleep(3)  # Wait for form reset confirmation
                     return True
                 else:
-                    print(f"❌ Failed to click 'Add' button - attempting retry")
-                    await asyncio.sleep(2)
-                    success = await self.click_add_button(driver)
-                    if success:
-                        print(f"✅ 'Add' button clicked on retry")
-                        await asyncio.sleep(3)
-                        return True
-                    else:
-                        print(f"⚠️ 'Add' button failed on retry - continuing to next record")
-                        return False
+                    print(f"⚠️ 'Add' button failed after all retries - continuing to next record")
+                    return False
                         
         except Exception as e:
             self.logger.error(f"❌ Enhanced button click error: {e}")
@@ -1220,37 +1585,31 @@ class EnhancedUserControlledAutomationSystem:
             return False
     
     def calculate_working_hours(self, record: Dict, transaction_type: str) -> float:
-        """Calculate working hours based on business rules"""
+        """Calculate working hours based on entry data - use the hours field directly from the entry"""
         try:
+            # For entries created by create_overtime_entries, use the hours field directly
+            if 'hours' in record:
+                return float(record.get('hours', 0))
+            
+            # Fallback for legacy records without hours field
             if transaction_type == 'Overtime':
                 return float(record.get('overtime_hours', 0))
-            
-            regular_hours = record.get('regular_hours', 0)
-            if regular_hours > 0:
-                date_str = record.get('date', '')
-                try:
-                    if '/' in date_str:
-                        date_obj = datetime.strptime(date_str, "%d/%m/%Y")
-                    else:
-                        date_obj = datetime.strptime(date_str, "%Y-%m-%d")
-                    
-                    is_saturday = date_obj.weekday() == 5
-                    return 5.0 if is_saturday else 7.0
-                    
-                except Exception:
-                    return float(regular_hours)
             else:
-                return float(regular_hours)
+                return float(record.get('regular_hours', 0))
                 
         except Exception as e:
             self.logger.error(f"❌ Working hours calculation failed: {e}")
+            # Fallback to original logic
             if transaction_type == 'Overtime':
                 return float(record.get('overtime_hours', 0))
             else:
                 return float(record.get('regular_hours', 0))
     
     def calculate_document_date_by_mode(self, attendance_date_str: str, mode: str = 'testing') -> str:
-        """Calculate document date based on automation mode - doc date month must match transaction date month"""
+        """Calculate document date based on automation mode
+        - Testing mode: Document date month matches Transaction date month
+        - Real mode: Document date is today's date
+        """
         try:
             # Parse attendance date to get the transaction date
             attendance_date = None
@@ -1270,19 +1629,25 @@ class EnhancedUserControlledAutomationSystem:
                 # Real mode: use attendance date as-is
                 transaction_date = attendance_date
             
-            # Document date: current day with transaction date's month and year
+            # Calculate document date based on mode
             current_date = datetime.now()
-            doc_date = datetime(transaction_date.year, transaction_date.month, current_date.day)
             
-            # Handle edge case where current day doesn't exist in target month (e.g., Feb 30)
-            try:
-                doc_date_formatted = doc_date.strftime("%d/%m/%Y")
-            except ValueError:
-                # If current day doesn't exist in target month, use last day of target month
-                from calendar import monthrange
-                last_day = monthrange(transaction_date.year, transaction_date.month)[1]
-                doc_date = datetime(transaction_date.year, transaction_date.month, min(current_date.day, last_day))
-                doc_date_formatted = doc_date.strftime("%d/%m/%Y")
+            if mode == 'testing':
+                # Testing mode: Document date month matches transaction date month
+                doc_date = datetime(transaction_date.year, transaction_date.month, current_date.day)
+                
+                # Handle edge case where current day doesn't exist in target month (e.g., Feb 30)
+                try:
+                    doc_date_formatted = doc_date.strftime("%d/%m/%Y")
+                except ValueError:
+                    # If current day doesn't exist in target month, use last day of target month
+                    from calendar import monthrange
+                    last_day = monthrange(transaction_date.year, transaction_date.month)[1]
+                    doc_date = datetime(transaction_date.year, transaction_date.month, min(current_date.day, last_day))
+                    doc_date_formatted = doc_date.strftime("%d/%m/%Y")
+            else:
+                # Real mode: Document date is today's date
+                doc_date_formatted = current_date.strftime("%d/%m/%Y")
             
             self.logger.info(f"📅 Document date calculation: Attendance={attendance_date_str}, Mode={mode}, Transaction={transaction_date.strftime('%d/%m/%Y')}, Document={doc_date_formatted}")
             return doc_date_formatted
@@ -1302,12 +1667,12 @@ class EnhancedUserControlledAutomationSystem:
             from selenium.common.exceptions import StaleElementReferenceException
             
             employee_name = record.get('employee_name', '')
-            employee_id_ptrj = record.get('employee_id_ptrj', '')
+            ptrj_employee_id = record.get('ptrj_employee_id', '')
             
             # Log automation step start
             self._log_automation_step("Employee Autocomplete Start", {
                 'employee_name': employee_name,
-                'employee_id_ptrj': employee_id_ptrj,
+                'ptrj_employee_id': ptrj_employee_id,
                 'field_name': field_name
             })
             
@@ -1315,7 +1680,7 @@ class EnhancedUserControlledAutomationSystem:
             self._log_driver_state(driver, "Employee Autocomplete - Initial")
             self._log_element_state(field, "Employee Field", "Initial State")
             
-            self.logger.info(f"🎯 Employee autocomplete - Name: {employee_name}, PTRJ ID: {employee_id_ptrj}")
+            self.logger.info(f"🎯 Employee autocomplete - Name: {employee_name}, PTRJ ID: {ptrj_employee_id}")
             
             # Check driver responsiveness before proceeding
             responsiveness_start = time.time()
@@ -1338,11 +1703,11 @@ class EnhancedUserControlledAutomationSystem:
             self._log_element_state(field, "Employee Field", "After Validation")
             
             # Priority 1: Try using Employee ID (PTRJ ID) if available
-            if employee_id_ptrj and employee_id_ptrj.strip():
+            if ptrj_employee_id and ptrj_employee_id.strip():
                 # Prepare employee ID with POM prefix if needed
-                employee_id_with_prefix = employee_id_ptrj
-                if not employee_id_ptrj.startswith('POM'):
-                    employee_id_with_prefix = f"POM{employee_id_ptrj}"
+                employee_id_with_prefix = ptrj_employee_id
+                if not ptrj_employee_id.startswith('POM'):
+                    employee_id_with_prefix = f"POM{ptrj_employee_id}"
                 
                 self.logger.info(f"🆔 Trying Employee ID first: {employee_id_with_prefix}")
                 
@@ -1384,7 +1749,7 @@ class EnhancedUserControlledAutomationSystem:
             self._log_automation_step("Employee Autocomplete", {
                 'error': 'All methods failed',
                 'employee_name': employee_name,
-                'employee_id_ptrj': employee_id_ptrj,
+                'ptrj_employee_id': ptrj_employee_id,
                 'total_time': time.time() - start_time
             }, success=False)
             return False
@@ -1675,6 +2040,11 @@ class EnhancedUserControlledAutomationSystem:
             from selenium.webdriver.common.by import By
             import asyncio
             
+            # Pre-check: Verify WebDriver connection before field operations
+            if not self._verify_webdriver_connection():
+                self.logger.error(f"WebDriver connection lost before validating field {field_name}")
+                return None
+            
             # Check if field is stale or invalid
             try:
                 # Test multiple properties to ensure field is truly valid
@@ -1688,6 +2058,7 @@ class EnhancedUserControlledAutomationSystem:
                         # Try to get field attributes to ensure it's fully loaded
                         field.get_attribute('id')
                         field.get_attribute('class')
+                        self.logger.debug(f"Field {field_name} validation successful")
                         return field
                     except Exception:
                         # Field exists but may not be fully interactive
@@ -1776,23 +2147,36 @@ class EnhancedUserControlledAutomationSystem:
              return None
     
     async def _safe_clear_field(self, field):
-        """Safely clear field with multiple methods"""
+        """Safely clear field with multiple methods and WebDriver validation"""
         try:
             from selenium.webdriver.common.keys import Keys
+            import asyncio
+            
+            # Pre-check: Verify WebDriver connection
+            if not self._verify_webdriver_connection():
+                self.logger.error("WebDriver connection lost during field clearing")
+                return False
             
             # Method 1: Standard clear
             try:
                 field.clear()
-                return
-            except:
+                await asyncio.sleep(0.2)  # Brief pause for stability
+                self.logger.debug("Field cleared using standard method")
+                return True
+            except Exception as e:
+                self.logger.debug(f"Standard clear failed: {e}")
                 pass
             
             # Method 2: Select all and delete
             try:
                 field.send_keys(Keys.CONTROL + "a")
+                await asyncio.sleep(0.1)
                 field.send_keys(Keys.DELETE)
-                return
-            except:
+                await asyncio.sleep(0.2)
+                self.logger.debug("Field cleared using select-all method")
+                return True
+            except Exception as e:
+                self.logger.debug(f"Select-all clear failed: {e}")
                 pass
             
             # Method 3: Backspace method
@@ -1801,11 +2185,18 @@ class EnhancedUserControlledAutomationSystem:
                 if field_value:
                     for _ in range(len(field_value)):
                         field.send_keys(Keys.BACKSPACE)
+                        await asyncio.sleep(0.05)  # Small delay between keystrokes
+                    self.logger.debug("Field cleared using backspace method")
+                    return True
             except Exception as e:
-                self.logger.warning(f"All clear methods failed: {e}")
+                self.logger.warning(f"Backspace clear failed: {e}")
+                
+            self.logger.warning("All field clearing methods failed")
+            return False
                 
         except Exception as e:
             self.logger.error(f"Safe clear field failed: {e}")
+            return False
     
     async def _recover_driver_if_needed(self, driver) -> bool:
         """Attempt to recover driver if it becomes unresponsive"""
@@ -2075,6 +2466,489 @@ class EnhancedUserControlledAutomationSystem:
             await self.processor.cleanup()
         except Exception as e:
             self.logger.error(f"Cleanup error: {e}")
+    
+    async def process_staging_data_array(self, staging_data_array: List[Dict], automation_mode: str = 'testing') -> Dict[str, Any]:
+        """Process an array of staging data records using manual implementation with comprehensive validation"""
+        start_time = time.time()
+        
+        # Input validation
+        if not isinstance(staging_data_array, list):
+            error_msg = f"Invalid input: staging_data_array must be a list, got {type(staging_data_array)}"
+            self.logger.error(error_msg)
+            return self._create_error_result(0, error_msg, automation_mode, start_time)
+        
+        if not staging_data_array:
+            error_msg = "Empty staging data array provided"
+            self.logger.warning(error_msg)
+            return self._create_success_result(0, 0, 0, automation_mode, start_time, [])
+        
+        if automation_mode not in ['testing', 'real']:
+            error_msg = f"Invalid automation_mode: {automation_mode}. Must be 'testing' or 'real'"
+            self.logger.error(error_msg)
+            return self._create_error_result(len(staging_data_array), error_msg, automation_mode, start_time)
+        
+        # Validate record structure
+        validation_errors = self._validate_staging_records(staging_data_array)
+        if validation_errors:
+            error_msg = f"Record validation failed: {'; '.join(validation_errors)}"
+            self.logger.error(error_msg)
+            return self._create_error_result(len(staging_data_array), error_msg, automation_mode, start_time)
+        
+        try:
+            self.logger.info(f"🚀 Starting staging data array processing with {len(staging_data_array)} records")
+            self.logger.info(f"🎯 Automation mode: {automation_mode}")
+            
+            # Set automation mode
+            self.automation_mode = automation_mode
+            
+            # Initialize browser system if not ready
+            if not self.is_browser_ready:
+                self.logger.info("🌐 Initializing browser system...")
+                try:
+                    await self.initialize_browser_system()
+                except Exception as browser_error:
+                    error_msg = f"Browser initialization failed: {browser_error}"
+                    self.logger.error(error_msg)
+                    return self._create_error_result(len(staging_data_array), error_msg, automation_mode, start_time)
+            
+            # Get driver with validation
+            driver = self._get_validated_driver()
+            if not driver:
+                error_msg = "WebDriver not available after initialization"
+                self.logger.error(error_msg)
+                return self._create_error_result(len(staging_data_array), error_msg, automation_mode, start_time)
+            
+            # Navigate to task register page with validation
+            navigation_success = await self._ensure_task_register_page(driver)
+            if not navigation_success:
+                error_msg = "Failed to navigate to task register page"
+                self.logger.error(error_msg)
+                return self._create_error_result(len(staging_data_array), error_msg, automation_mode, start_time)
+            
+            # Process records using manual implementation with enhanced validation
+            return await self._process_records_with_validation(driver, staging_data_array, automation_mode, start_time)
+            
+        except Exception as e:
+            error_msg = f"Critical error in staging data array processing: {e}"
+            self.logger.error(error_msg)
+            return self._create_error_result(len(staging_data_array) if staging_data_array else 0, error_msg, automation_mode, start_time)
+    
+    async def _process_record_manual_implementation(self, driver, record: Dict, record_index: int, total_records: int) -> bool:
+        """Manual implementation with enhanced validation and error handling"""
+        try:
+            from selenium.webdriver.common.by import By
+            from selenium.webdriver.common.keys import Keys
+            from selenium.webdriver.support.ui import WebDriverWait
+            from selenium.webdriver.support import expected_conditions as EC
+            from selenium.common.exceptions import TimeoutException, StaleElementReferenceException, NoSuchElementException
+            
+            # Validate input parameters
+            if not isinstance(record, dict):
+                self.logger.error(f"Invalid record type: expected dict, got {type(record)}")
+                return False
+            
+            employee_name = record.get('employee_name', '').strip()
+            date_value = record.get('date', '').strip()
+            
+            if not employee_name:
+                self.logger.error(f"Record {record_index}: employee_name is empty")
+                return False
+            
+            if not date_value:
+                self.logger.error(f"Record {record_index}: date is empty")
+                return False
+            
+            self.logger.info(f"📋 Processing: {employee_name} - {date_value}")
+            
+            # Validate driver is still responsive
+            try:
+                driver.current_url
+            except Exception as driver_error:
+                self.logger.error(f"Driver validation failed: {driver_error}")
+                return False
+            
+            # Step 1: Fill transaction date field with enhanced validation
+            try:
+                formatted_trx_date = self.calculate_transaction_date_by_mode(date_value, self.automation_mode)
+                self.logger.info(f"📅 Formatted date: {formatted_trx_date}")
+                
+                # Validate date field exists before processing
+                date_field = WebDriverWait(driver, 5).until(
+                    EC.presence_of_element_located((By.ID, "MainContent_txtTrxDate"))
+                )
+                
+                script = f"""
+                    var dateField = document.getElementById('MainContent_txtTrxDate');
+                    if (dateField) {{
+                        dateField.value = '{formatted_trx_date}';
+                        dateField.dispatchEvent(new Event('change', {{bubbles: true}}));
+                        return true;
+                    }}
+                    return false;
+                """
+                
+                result = driver.execute_script(script)
+                if not result:
+                    self.logger.error(f"Record {record_index}: Failed to fill transaction date field")
+                    return False
+                
+                # Send ENTER to trigger date processing
+                date_field.send_keys(Keys.ENTER)
+                await asyncio.sleep(2)
+                
+                # Verify date was set correctly
+                actual_date = driver.execute_script("return document.getElementById('MainContent_txtTrxDate').value;")
+                if actual_date != formatted_trx_date:
+                    self.logger.warning(f"Record {record_index}: Date verification failed - expected {formatted_trx_date}, got {actual_date}")
+                    
+            except TimeoutException:
+                self.logger.error(f"Record {record_index}: Date field 'MainContent_txtTrxDate' not found")
+                return False
+            except Exception as date_error:
+                self.logger.error(f"Record {record_index}: Date processing failed: {date_error}")
+                return False
+            
+            # Step 2: Fill employee field using smart autocomplete with validation
+            try:
+                employee_field = WebDriverWait(driver, 10).until(
+                    EC.presence_of_element_located((By.ID, "MainContent_txtEmployee"))
+                )
+                
+                # Validate field is interactable
+                if not employee_field.is_enabled():
+                    self.logger.error(f"Record {record_index}: Employee field is not enabled")
+                    return False
+                
+                # Clear and fill employee field
+                employee_field.clear()
+                await asyncio.sleep(0.5)
+                
+                # Type employee name character by character with enhanced error handling
+                chars_typed = 0
+                for char in employee_name:
+                    try:
+                        employee_field.send_keys(char)
+                        chars_typed += 1
+                        await asyncio.sleep(0.2)
+                        
+                        # Check for dropdown options
+                        try:
+                            dropdown_options = driver.find_elements(By.CSS_SELECTOR, ".ui-autocomplete .ui-menu-item")
+                            if dropdown_options:
+                                visible_options = [opt for opt in dropdown_options if opt.is_displayed()]
+                                if len(visible_options) == 1:
+                                    employee_field.send_keys(Keys.ARROW_DOWN)
+                                    await asyncio.sleep(0.8)
+                                    employee_field.send_keys(Keys.ENTER)
+                                    await asyncio.sleep(1.5)
+                                    break  # Successfully selected from dropdown
+                        except StaleElementReferenceException:
+                            self.logger.warning(f"Record {record_index}: Stale element during dropdown check, continuing...")
+                            continue
+                    except Exception as char_error:
+                         self.logger.error(f"Record {record_index}: Failed to type character '{char}' at position {chars_typed}: {char_error}")
+                         return False
+                
+                # Fallback: use arrow down + enter if no dropdown selection occurred
+                try:
+                    employee_field.send_keys(Keys.ARROW_DOWN)
+                    await asyncio.sleep(1.0)
+                    employee_field.send_keys(Keys.ENTER)
+                    await asyncio.sleep(1.5)
+                    
+                    # Verify employee field was filled
+                    filled_value = employee_field.get_attribute('value')
+                    if not filled_value or filled_value.strip() == '':
+                        self.logger.error(f"Record {record_index}: Employee field remains empty after processing")
+                        return False
+                    
+                except Exception as fallback_error:
+                    self.logger.error(f"Record {record_index}: Employee field fallback failed: {fallback_error}")
+                    return False
+                    
+            except TimeoutException:
+                self.logger.error(f"Record {record_index}: Employee field 'MainContent_txtEmployee' not found")
+                return False
+            except Exception as employee_error:
+                self.logger.error(f"Record {record_index}: Employee field processing failed: {employee_error}")
+                return False
+            
+            self.logger.info(f"✅ Record processed successfully: {employee_name}")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"❌ Manual implementation error: {e}")
+            return False
+    
+    def _validate_staging_records(self, staging_data_array: List[Dict]) -> List[str]:
+        """Validate staging records structure and required fields"""
+        errors = []
+        required_fields = ['employee_name', 'date']
+        
+        for i, record in enumerate(staging_data_array, 1):
+            if not isinstance(record, dict):
+                errors.append(f"Record {i}: must be a dictionary, got {type(record)}")
+                continue
+            
+            for field in required_fields:
+                if field not in record:
+                    errors.append(f"Record {i}: missing required field '{field}'")
+                elif not record[field] or not str(record[field]).strip():
+                    errors.append(f"Record {i}: field '{field}' is empty or None")
+            
+            # Validate date format if present
+            if 'date' in record and record['date']:
+                try:
+                    from datetime import datetime
+                    datetime.strptime(str(record['date']), '%Y-%m-%d')
+                except ValueError:
+                    errors.append(f"Record {i}: invalid date format '{record['date']}', expected YYYY-MM-DD")
+        
+        return errors
+    
+    def _get_validated_driver(self):
+        """Get WebDriver with validation"""
+        try:
+            driver = self.processor.browser_manager.get_driver()
+            if not driver:
+                return None
+            
+            # Test driver responsiveness
+            driver.current_url
+            return driver
+        except Exception as e:
+            self.logger.error(f"Driver validation failed: {e}")
+            return None
+    
+    def _get_validated_driver_with_recovery(self):
+        """Get validated WebDriver with recovery attempts"""
+        max_attempts = 3
+        
+        for attempt in range(max_attempts):
+            try:
+                print(f"🔍 WebDriver validation attempt {attempt + 1}/{max_attempts}")
+                
+                # First try to get existing driver
+                driver = self._get_validated_driver()
+                if driver:
+                    print(f"✅ WebDriver validated successfully on attempt {attempt + 1}")
+                    return driver
+                
+                # If no valid driver, try to reinitialize
+                print(f"⚠️ WebDriver invalid, attempting recovery...")
+                
+                if hasattr(self.processor.browser_manager, 'restart_driver'):
+                    success = self.processor.browser_manager.restart_driver()
+                    if success:
+                        driver = self.processor.browser_manager.get_driver()
+                        if driver:
+                            print(f"✅ WebDriver recovered successfully on attempt {attempt + 1}")
+                            return driver
+                
+                # Wait before next attempt
+                if attempt < max_attempts - 1:
+                    print(f"⏳ Waiting 2 seconds before next attempt...")
+                    time.sleep(2)
+                    
+            except Exception as e:
+                print(f"❌ WebDriver recovery attempt {attempt + 1} failed: {e}")
+                self.logger.error(f"WebDriver recovery attempt {attempt + 1} failed: {e}")
+                
+                if attempt < max_attempts - 1:
+                    time.sleep(2)
+        
+        print(f"❌ All WebDriver recovery attempts failed")
+        return None
+    
+    async def _click_button_with_enhanced_retry(self, driver, button_type: str, max_retries: int = 3) -> bool:
+        """Enhanced button click with retry mechanism and validation"""
+        for attempt in range(max_retries):
+            try:
+                print(f"🔄 Button click attempt {attempt + 1}/{max_retries} for '{button_type}' button")
+                
+                # Validate driver connection before each attempt
+                if not self._verify_webdriver_connection():
+                    print(f"❌ WebDriver connection lost during button click attempt {attempt + 1}")
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(2)
+                        continue
+                    return False
+                
+                # Attempt button click based on type
+                if button_type.lower() == 'add':
+                    success = await self.click_add_button(driver)
+                elif button_type.lower() == 'new':
+                    success = await self.click_new_button(driver)
+                else:
+                    print(f"❌ Unknown button type: {button_type}")
+                    return False
+                
+                if success:
+                    print(f"✅ '{button_type}' button clicked successfully on attempt {attempt + 1}")
+                    return True
+                else:
+                    print(f"❌ '{button_type}' button click failed on attempt {attempt + 1}")
+                    if attempt < max_retries - 1:
+                        print(f"⏳ Waiting 2 seconds before retry...")
+                        await asyncio.sleep(2)
+                
+            except Exception as e:
+                print(f"❌ Exception during '{button_type}' button click attempt {attempt + 1}: {e}")
+                self.logger.error(f"Button click attempt {attempt + 1} failed: {e}")
+                
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(2)
+        
+        print(f"❌ All '{button_type}' button click attempts failed")
+        return False
+    
+    async def _ensure_task_register_page(self, driver) -> bool:
+        """Ensure we're on the task register page with validation"""
+        try:
+            task_register_url = "http://millwarep3:8004/en/PR/trx/frmPrTrxTaskRegisterDet.aspx"
+            current_url = driver.current_url
+            
+            if task_register_url not in current_url:
+                self.logger.info(f"Navigating to task register page: {task_register_url}")
+                driver.get(task_register_url)
+                await asyncio.sleep(3)
+                
+                # Verify navigation success
+                new_url = driver.current_url
+                if task_register_url not in new_url:
+                    self.logger.error(f"Navigation failed. Expected: {task_register_url}, Got: {new_url}")
+                    return False
+            
+            # Verify page elements are present
+            from selenium.webdriver.common.by import By
+            from selenium.webdriver.support.ui import WebDriverWait
+            from selenium.webdriver.support import expected_conditions as EC
+            
+            try:
+                WebDriverWait(driver, 10).until(
+                    EC.presence_of_element_located((By.ID, "MainContent_txtTrxDate"))
+                )
+                WebDriverWait(driver, 10).until(
+                    EC.presence_of_element_located((By.ID, "MainContent_txtEmployee"))
+                )
+                return True
+            except Exception as element_error:
+                self.logger.error(f"Required page elements not found: {element_error}")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"Page navigation validation failed: {e}")
+            return False
+    
+    async def _process_records_with_validation(self, driver, staging_data_array: List[Dict], automation_mode: str, start_time: float) -> Dict[str, Any]:
+        """Process records with comprehensive validation and error handling"""
+        successful_records = 0
+        failed_records = 0
+        processing_results = []
+        max_consecutive_failures = 3
+        consecutive_failures = 0
+        
+        for i, record in enumerate(staging_data_array, 1):
+            record_start_time = time.time()
+            
+            try:
+                self.logger.info(f"Processing record {i}/{len(staging_data_array)}: {record.get('employee_name', 'Unknown')}")
+                
+                # Check for too many consecutive failures
+                if consecutive_failures >= max_consecutive_failures:
+                    error_msg = f"Stopping processing due to {max_consecutive_failures} consecutive failures"
+                    self.logger.error(error_msg)
+                    
+                    # Mark remaining records as failed
+                    for j in range(i, len(staging_data_array) + 1):
+                        processing_results.append({
+                            'record_index': j,
+                            'employee_name': staging_data_array[j-1].get('employee_name', 'Unknown') if j <= len(staging_data_array) else 'Unknown',
+                            'status': 'skipped',
+                            'error': 'Skipped due to consecutive failures',
+                            'processing_time': 0
+                        })
+                        failed_records += 1
+                    break
+                
+                # Validate driver before processing
+                if not self._get_validated_driver():
+                    raise Exception("Driver became invalid during processing")
+                
+                # Use the successful manual implementation
+                success = await self._process_record_manual_implementation(driver, record, i, len(staging_data_array))
+                
+                processing_time = time.time() - record_start_time
+                
+                if success:
+                    successful_records += 1
+                    consecutive_failures = 0  # Reset consecutive failure counter
+                    self.logger.info(f"✅ Record {i} processed successfully in {processing_time:.2f}s")
+                    processing_results.append({
+                        'record_index': i,
+                        'employee_name': record.get('employee_name', 'Unknown'),
+                        'status': 'success',
+                        'processing_time': processing_time
+                    })
+                else:
+                    failed_records += 1
+                    consecutive_failures += 1
+                    self.logger.error(f"❌ Record {i} failed to process")
+                    processing_results.append({
+                        'record_index': i,
+                        'employee_name': record.get('employee_name', 'Unknown'),
+                        'status': 'failed',
+                        'processing_time': processing_time
+                    })
+                
+                # Small delay between records
+                await asyncio.sleep(1)
+                
+            except Exception as record_error:
+                failed_records += 1
+                consecutive_failures += 1
+                processing_time = time.time() - record_start_time
+                self.logger.error(f"❌ Record {i} processing error: {record_error}")
+                processing_results.append({
+                    'record_index': i,
+                    'employee_name': record.get('employee_name', 'Unknown'),
+                    'status': 'error',
+                    'error': str(record_error),
+                    'processing_time': processing_time
+                })
+        
+        return self._create_success_result(len(staging_data_array), successful_records, failed_records, automation_mode, start_time, processing_results)
+    
+    def _create_success_result(self, total_records: int, successful_records: int, failed_records: int, automation_mode: str, start_time: float, processing_results: List[Dict]) -> Dict[str, Any]:
+        """Create a success result dictionary"""
+        total_time = time.time() - start_time
+        success_rate = (successful_records / total_records) * 100 if total_records > 0 else 0
+        
+        result = {
+            'total_records': total_records,
+            'successful_records': successful_records,
+            'failed_records': failed_records,
+            'success_rate': success_rate,
+            'total_processing_time': total_time,
+            'automation_mode': automation_mode,
+            'processing_results': processing_results
+        }
+        
+        self.logger.info(f"🎯 Processing completed: {successful_records}/{total_records} successful ({success_rate:.1f}%)")
+        return result
+    
+    def _create_error_result(self, total_records: int, error_message: str, automation_mode: str, start_time: float) -> Dict[str, Any]:
+        """Create an error result dictionary"""
+        return {
+            'total_records': total_records,
+            'successful_records': 0,
+            'failed_records': total_records,
+            'success_rate': 0,
+            'total_processing_time': time.time() - start_time,
+            'automation_mode': automation_mode,
+            'error': error_message,
+            'processing_results': []
+        }
 
 
 def setup_logging():
@@ -2122,10 +2996,10 @@ async def main():
             return
         
         print("\n" + "="*80)
-        print("✅ ENHANCED SYSTEM READY WITH CROSSCHECK")
+        print("✅ ENHANCED SYSTEM READY WITH DATABASE INTEGRATION")
         print("="*80)
         print("🌐 Web interface: http://localhost:5000")
-        print("📊 New API endpoint: http://localhost:5173/api/staging/data-grouped")
+        print("🗄️ Database: Direct access to staging_attendance.db")
         print("🔍 Features: Progress tracking + Database crosscheck validation")
         print("🎯 Supported modes: Testing (db_ptrj_mill_test) | Real (db_ptrj_mill)")
         print("="*80)

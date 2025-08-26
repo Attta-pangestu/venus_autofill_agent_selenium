@@ -25,11 +25,11 @@ sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 # Import komponen yang diperlukan
 try:
-    from src.core.api_data_automation import RealAPIDataProcessor
+    from src.core.database_manager import DatabaseManager as CoreDatabaseManager
     from src.core.employee_exclusion_validator import EmployeeExclusionValidator
 except ImportError as e:
     print(f"Warning: Could not import core modules: {e}")
-    RealAPIDataProcessor = None
+    CoreDatabaseManager = None
     EmployeeExclusionValidator = None
 
 # Import enhanced automation system
@@ -264,7 +264,7 @@ class VenusDesktopApp:
         # Initialize database manager
         self.db_manager = DatabaseManager(
             db_path=self.config.get('database', {}).get('staging_db_path', 
-                'D:\\Gawean Rebinmas\\Autofill Venus Millware\\Selenium Auto Fill _Progress\\Selenium Auto Fill\\Selenium Auto Fill\\data\\staging_attendance.db'),
+                'D:\\Gawean Rebinmas\\Autofill Venus Millware\\Selenium_aug_25\\Selenium Auto Fill\\Selenium Auto Fill\\data\\staging_attendance.db'),
             logger=self.logger
         )
         
@@ -350,7 +350,7 @@ class VenusDesktopApp:
         # Default configuration
         default_config = {
             "database": {
-                "staging_db_path": "D:\\Gawean Rebinmas\\Autofill Venus Millware\\Selenium Auto Fill _Progress\\Selenium Auto Fill\\Selenium Auto Fill\\data\\staging_attendance.db"
+                "staging_db_path": "D:\\Gawean Rebinmas\\Autofill Venus Millware\\Selenium_aug_25\\Selenium Auto Fill\\Selenium Auto Fill\\data\\staging_attendance.db"
             },
             "ui": {
                 "auto_refresh_interval": 30,
@@ -415,222 +415,191 @@ class VenusDesktopApp:
                 self.db_status_label.config(text="🔴 Database error", foreground="red")
     
     def _setup_ui(self):
-        """Setup main UI components"""
-        # Create main frame
-        self.main_frame = ttk.Frame(self.root, padding="10")
+        """Setup main UI components with modern design"""
+        # Create main frame with modern styling
+        self.main_frame = ttk.Frame(self.root, padding="15")
         self.main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         
-        # Configure grid weights
+        # Configure grid weights for responsive design
         self.root.columnconfigure(0, weight=1)
         self.root.rowconfigure(0, weight=1)
-        self.main_frame.columnconfigure(1, weight=1)
-        self.main_frame.rowconfigure(1, weight=1)
+        self.main_frame.columnconfigure(0, weight=1)  # Main content area
+        self.main_frame.rowconfigure(1, weight=1)     # Data section gets most space
         
-        # Create UI sections
-        self._create_header_section()
-        self._create_control_panel()
-        self._create_data_section()
-        self._create_log_section()
+        # Create UI sections with improved layout
+        self._create_modern_header()
+        self._create_simplified_toolbar()
+        self._create_enhanced_data_section()
+        self._create_compact_log_section()
         self._create_status_bar()
+        
+        # Initialize auto-refresh functionality
+        self._setup_auto_refresh()
     
-    def _create_header_section(self):
-        """Create header with title and status indicators"""
-        header_frame = ttk.LabelFrame(self.main_frame, text="Venus AutoFill Desktop", padding="10")
-        header_frame.grid(row=0, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(0, 10))
+    def _create_modern_header(self):
+        """Create modern header with clean design and essential status"""
+        header_frame = ttk.Frame(self.main_frame)
+        header_frame.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=(0, 15))
         header_frame.columnconfigure(1, weight=1)
         
-        # Title
-        title_label = ttk.Label(header_frame, text="🚀 Venus AutoFill Desktop Application", 
-                               font=('Segoe UI', 16, 'bold'))
-        title_label.grid(row=0, column=0, columnspan=3, pady=(0, 10))
+        # Modern title with icon
+        title_frame = ttk.Frame(header_frame)
+        title_frame.grid(row=0, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(0, 10))
         
-        # Status indicators
-        status_frame = ttk.Frame(header_frame)
-        status_frame.grid(row=1, column=0, columnspan=3, sticky=(tk.W, tk.E))
+        title_label = ttk.Label(title_frame, text="🚀 Venus AutoFill Desktop", 
+                               font=('Segoe UI', 18, 'bold'), foreground='#2E86AB')
+        title_label.pack(side='left')
+        
+        # Compact status indicators in a single line
+        status_frame = ttk.Frame(header_frame, relief='solid', borderwidth=1)
+        status_frame.grid(row=1, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=5)
+        status_frame.columnconfigure(3, weight=1)
+        
+        # Database status (most important)
+        self.db_status_indicator = ttk.Label(status_frame, text="🔴 Database", foreground="red", 
+                                           font=('Segoe UI', 9, 'bold'))
+        self.db_status_indicator.grid(row=0, column=0, padx=10, pady=5)
         
         # Browser status
-        ttk.Label(status_frame, text="Browser:").grid(row=0, column=0, padx=(0, 5))
-        self.browser_status_label = ttk.Label(status_frame, text="❌ Not Ready", foreground="red")
-        self.browser_status_label.grid(row=0, column=1, padx=(0, 20))
-        
-        # Server status
-        ttk.Label(status_frame, text="Server:").grid(row=0, column=2, padx=(0, 5))
-        self.server_status_label = ttk.Label(status_frame, text="❌ Not Running", foreground="red")
-        self.server_status_label.grid(row=0, column=3, padx=(0, 20))
+        self.browser_status_indicator = ttk.Label(status_frame, text="❌ Browser", foreground="red")
+        self.browser_status_indicator.grid(row=0, column=1, padx=10, pady=5)
         
         # Automation status
-        ttk.Label(status_frame, text="Automation:").grid(row=0, column=4, padx=(0, 5))
-        self.automation_status_label = ttk.Label(status_frame, text="⏸️ Idle", foreground="gray")
-        self.automation_status_label.grid(row=0, column=5)
+        self.automation_status_indicator = ttk.Label(status_frame, text="⏸️ Ready", foreground="gray")
+        self.automation_status_indicator.grid(row=0, column=2, padx=10, pady=5)
+        
+        # Data count indicator
+        self.data_count_indicator = ttk.Label(status_frame, text="📊 0 records", foreground="blue")
+        self.data_count_indicator.grid(row=0, column=3, padx=10, pady=5, sticky='e')
     
-    def _create_control_panel(self):
-        """Create control panel with buttons and settings"""
-        control_frame = ttk.LabelFrame(self.main_frame, text="Control Panel", padding="10")
-        control_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=(0, 10))
+    def _create_simplified_toolbar(self):
+        """Create simplified toolbar with essential controls only"""
+        toolbar_frame = ttk.Frame(self.main_frame, relief='raised', borderwidth=1)
+        toolbar_frame.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
+        toolbar_frame.columnconfigure(4, weight=1)
         
-        # Browser controls
-        browser_frame = ttk.LabelFrame(control_frame, text="Browser Control", padding="5")
-        browser_frame.pack(fill="x", pady=(0, 10))
+        # Essential action buttons in a single row
+        self.init_browser_btn = ttk.Button(toolbar_frame, text="🔧 Initialize", 
+                                          command=self._initialize_browser_async,
+                                          style='Accent.TButton')
+        self.init_browser_btn.grid(row=0, column=0, padx=5, pady=8)
         
-        self.init_browser_btn = ttk.Button(browser_frame, text="🔧 Initialize Browser", 
-                                          command=self._initialize_browser_async)
-        self.init_browser_btn.pack(fill="x", pady=2)
-        
-        self.test_connection_btn = ttk.Button(browser_frame, text="🔗 Test Connection", 
-                                             command=self._test_connection)
-        self.test_connection_btn.pack(fill="x", pady=2)
-        
-        # Database Configuration
-        db_config_frame = ttk.LabelFrame(control_frame, text="Database Configuration", padding="5")
-        db_config_frame.pack(fill="x", pady=(0, 10))
-        
-        # Database path input
-        db_path_frame = ttk.Frame(db_config_frame)
-        db_path_frame.pack(fill="x", pady=2)
-        
-        ttk.Label(db_path_frame, text="DB Path:").pack(side="left")
-        self.db_path_var = tk.StringVar(value=self.config.get('database', {}).get('staging_db_path', ''))
-        self.db_path_entry = ttk.Entry(db_path_frame, textvariable=self.db_path_var, width=40)
-        self.db_path_entry.pack(side="left", padx=(5, 5), fill="x", expand=True)
-        
-        self.browse_db_btn = ttk.Button(db_path_frame, text="📁 Browse", 
-                                       command=self._browse_database_path)
-        self.browse_db_btn.pack(side="right", padx=(5, 0))
-        
-        # Database controls
-        db_controls_frame = ttk.Frame(db_config_frame)
-        db_controls_frame.pack(fill="x", pady=2)
-        
-        self.test_db_btn = ttk.Button(db_controls_frame, text="🔍 Test DB Connection", 
-                                     command=self._test_database_connection)
-        self.test_db_btn.pack(side="left", padx=(0, 5))
-        
-        self.save_config_btn = ttk.Button(db_controls_frame, text="💾 Save Config", 
-                                         command=self._save_config)
-        self.save_config_btn.pack(side="left", padx=(0, 5))
-        
-        # Database status
-        self.db_status_label = ttk.Label(db_config_frame, text="🔴 Database not connected", foreground="red")
-        self.db_status_label.pack(fill="x", pady=2)
-        
-        # Data controls
-        data_frame = ttk.LabelFrame(control_frame, text="Data Management", padding="5")
-        data_frame.pack(fill="x", pady=(0, 10))
-        
-        self.refresh_data_btn = ttk.Button(data_frame, text="🔄 Refresh Data", 
-                                          command=self._refresh_data_async)
-        self.refresh_data_btn.pack(fill="x", pady=2)
-        
-        self.select_all_btn = ttk.Button(data_frame, text="☑️ Select All", 
-                                        command=self._select_all_records)
-        self.select_all_btn.pack(fill="x", pady=2)
-        
-        self.clear_selection_btn = ttk.Button(data_frame, text="❌ Clear Selection", 
-                                             command=self._clear_selection)
-        self.clear_selection_btn.pack(fill="x", pady=2)
-        
-        # Automation controls
-        automation_frame = ttk.LabelFrame(control_frame, text="Automation Control", padding="5")
-        automation_frame.pack(fill="x", pady=(0, 10))
-        
-        # Mode selection
-        mode_frame = ttk.Frame(automation_frame)
-        mode_frame.pack(fill="x", pady=(0, 5))
-        
-        ttk.Label(mode_frame, text="Mode:").pack(side="left")
-        self.automation_mode = tk.StringVar(value="testing")
-        
-        mode_radio_frame = ttk.Frame(mode_frame)
-        mode_radio_frame.pack(side="right")
-        
-        ttk.Radiobutton(mode_radio_frame, text="Testing", variable=self.automation_mode, 
-                       value="testing").pack(side="left", padx=5)
-        ttk.Radiobutton(mode_radio_frame, text="Real", variable=self.automation_mode, 
-                       value="real").pack(side="left", padx=5)
-        
-        self.start_automation_btn = ttk.Button(automation_frame, text="▶️ Start Automation", 
-                                              command=self._start_automation_async)
-        self.start_automation_btn.pack(fill="x", pady=2)
-        
-        self.stop_automation_btn = ttk.Button(automation_frame, text="⏹️ Stop Automation", 
-                                             command=self._stop_automation, state="disabled")
-        self.stop_automation_btn.pack(fill="x", pady=2)
-        
-        # Enhanced Progress section with data loading indicator
-        progress_frame = ttk.LabelFrame(control_frame, text="📊 Progress & Loading Status", padding="5")
-        progress_frame.pack(fill="x", pady=(0, 10))
-        
-        # Data loading progress
-        data_loading_frame = ttk.Frame(progress_frame)
-        data_loading_frame.pack(fill="x", pady=2)
-        
-        ttk.Label(data_loading_frame, text="Data Loading:").pack(side="left")
-        self.data_loading_var = tk.DoubleVar()
-        self.data_loading_bar = ttk.Progressbar(data_loading_frame, variable=self.data_loading_var, 
-                                               maximum=100, length=150)
-        self.data_loading_bar.pack(side="left", padx=(10, 5))
-        
-        self.data_loading_label = ttk.Label(data_loading_frame, text="Initializing...")
-        self.data_loading_label.pack(side="left", padx=5)
-        
-        # Automation progress
-        automation_frame = ttk.Frame(progress_frame)
-        automation_frame.pack(fill="x", pady=2)
-        
-        ttk.Label(automation_frame, text="Automation:").pack(side="left")
-        self.progress_var = tk.DoubleVar()
-        self.progress_bar = ttk.Progressbar(automation_frame, variable=self.progress_var, 
-                                           maximum=100, length=150)
-        self.progress_bar.pack(side="left", padx=(10, 5))
-        
-        self.progress_label = ttk.Label(automation_frame, text="Ready")
-        self.progress_label.pack(side="left", padx=5)
-        
-        # Statistics
-        stats_frame = ttk.LabelFrame(control_frame, text="Statistics", padding="5")
-        stats_frame.pack(fill="x")
-        
-        self.stats_text = tk.Text(stats_frame, height=6, width=30, wrap="word")
-        self.stats_text.pack(fill="both", expand=True)
-        self._update_statistics()
-    
-    def _create_data_section(self):
-        """Create enhanced data display section with real-time staging data"""
-        data_frame = ttk.LabelFrame(self.main_frame, text="📊 Data Staging Real-Time", padding="10")
-        data_frame.grid(row=1, column=1, sticky=(tk.W, tk.E, tk.N, tk.S))
-        data_frame.columnconfigure(0, weight=1)
-        data_frame.rowconfigure(1, weight=1)
-        
-        # Status and statistics frame
-        status_frame = ttk.Frame(data_frame)
-        status_frame.grid(row=0, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(0, 10))
-        
-        # Connection status indicator
-        self.connection_status_label = ttk.Label(status_frame, text="🔴 Disconnected", foreground="red")
-        self.connection_status_label.grid(row=0, column=0, sticky="w")
-        
-        # Data statistics
-        self.data_stats_label = ttk.Label(status_frame, text="📊 No data loaded")
-        self.data_stats_label.grid(row=0, column=1, padx=(20, 0), sticky="w")
-        
-        # Last update time
-        self.last_update_label = ttk.Label(status_frame, text="🕒 Never updated")
-        self.last_update_label.grid(row=0, column=2, padx=(20, 0), sticky="w")
-        
-        # Auto-refresh toggle
+        # Auto-refresh toggle (replaces manual refresh)
         self.auto_refresh_var = tk.BooleanVar(value=True)
-        auto_refresh_cb = ttk.Checkbutton(status_frame, text="Auto Refresh", variable=self.auto_refresh_var)
-        auto_refresh_cb.grid(row=0, column=3, padx=(20, 0), sticky="e")
+        auto_refresh_cb = ttk.Checkbutton(toolbar_frame, text="🔄 Auto-Refresh", 
+                                         variable=self.auto_refresh_var,
+                                         command=self._toggle_auto_refresh)
+        auto_refresh_cb.grid(row=0, column=1, padx=15, pady=8)
         
-        # Selection counter
-        self.selection_counter_label = ttk.Label(status_frame, text="📋 0 selected")
-        self.selection_counter_label.grid(row=0, column=4, padx=(20, 0), sticky="e")
+        # Selection controls
+        selection_frame = ttk.Frame(toolbar_frame)
+        selection_frame.grid(row=0, column=2, padx=15, pady=8)
         
-        # Configure status frame grid
-        status_frame.grid_columnconfigure(4, weight=1)
+        self.select_all_btn = ttk.Button(selection_frame, text="☑️ All", 
+                                        command=self._select_all_records, width=8)
+        self.select_all_btn.pack(side='left', padx=(0, 5))
         
-        # Store reference to status frame for later use
-        self.status_frame = status_frame
+        self.clear_selection_btn = ttk.Button(selection_frame, text="❌ Clear", 
+                                             command=self._clear_selection, width=8)
+        self.clear_selection_btn.pack(side='left')
+        
+        # Automation mode and start button
+        automation_frame = ttk.Frame(toolbar_frame)
+        automation_frame.grid(row=0, column=3, padx=15, pady=8)
+        
+        # Compact mode selection
+        self.automation_mode = tk.StringVar(value="testing")
+        mode_frame = ttk.Frame(automation_frame)
+        mode_frame.pack(side='left', padx=(0, 10))
+        
+        ttk.Radiobutton(mode_frame, text="Test", variable=self.automation_mode, 
+                       value="testing").pack(side='left')
+        ttk.Radiobutton(mode_frame, text="Real", variable=self.automation_mode, 
+                       value="real").pack(side='left', padx=(10, 0))
+        
+        # Start/Stop automation
+        self.start_automation_btn = ttk.Button(automation_frame, text="▶️ Start", 
+                                              command=self._start_automation_async,
+                                              style='Success.TButton')
+        self.start_automation_btn.pack(side='left')
+        
+        self.stop_automation_btn = ttk.Button(automation_frame, text="⏹️ Stop", 
+                                             command=self._stop_automation,
+                                             style='Danger.TButton', state="disabled")
+        self.stop_automation_btn.pack(side='left', padx=(5, 0))
+        
+        # Progress indicator (compact)
+        progress_frame = ttk.Frame(toolbar_frame)
+        progress_frame.grid(row=0, column=4, padx=10, pady=8, sticky='e')
+        
+        self.progress_var = tk.DoubleVar()
+        self.progress_bar = ttk.Progressbar(progress_frame, variable=self.progress_var, 
+                                           maximum=100, length=120, mode='determinate')
+        self.progress_bar.pack(side='left', padx=(0, 5))
+        
+        self.progress_label = ttk.Label(progress_frame, text="Ready", width=12)
+        self.progress_label.pack(side='left')
+        
+        # Store references for status updates
+        self.db_status_label = self.db_status_indicator  # Compatibility
+        self.browser_status_label = self.browser_status_indicator
+        self.automation_status_label = self.automation_status_indicator
+    
+    def _create_enhanced_data_section(self):
+        """Create enhanced data display section with modern design and filters"""
+        data_frame = ttk.LabelFrame(self.main_frame, text="📊 Staging Data", padding="10")
+        data_frame.grid(row=2, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(0, 10))
+        data_frame.columnconfigure(0, weight=1)
+        data_frame.rowconfigure(2, weight=1)  # Tree gets most space
+        
+        # Data info and filter bar
+        info_frame = ttk.Frame(data_frame)
+        info_frame.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
+        info_frame.columnconfigure(2, weight=1)
+        
+        # Data statistics (left side)
+        self.data_stats_label = ttk.Label(info_frame, text="📊 Loading...", font=('Segoe UI', 9, 'bold'))
+        self.data_stats_label.grid(row=0, column=0, sticky="w")
+        
+        # Selection counter (left side)
+        self.selection_counter_label = ttk.Label(info_frame, text="📋 0 selected", foreground="blue")
+        self.selection_counter_label.grid(row=0, column=1, padx=(20, 0), sticky="w")
+        
+        # Last update time (right side)
+        self.last_update_label = ttk.Label(info_frame, text="🕒 Never updated", foreground="gray")
+        self.last_update_label.grid(row=0, column=2, sticky="e")
+        
+        # Quick filter bar
+        filter_frame = ttk.Frame(data_frame, relief='sunken', borderwidth=1)
+        filter_frame.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
+        filter_frame.columnconfigure(1, weight=1)
+        
+        ttk.Label(filter_frame, text="🔍 Filter:").grid(row=0, column=0, padx=5, pady=5)
+        
+        self.filter_var = tk.StringVar()
+        self.filter_entry = ttk.Entry(filter_frame, textvariable=self.filter_var)
+        self.filter_entry.grid(row=0, column=1, sticky=(tk.W, tk.E), padx=5, pady=5)
+        self.filter_entry.bind('<KeyRelease>', self._on_filter_change)
+        
+        # Add placeholder text functionality
+        self.filter_entry.insert(0, "Search by employee name, date, or status...")
+        self.filter_entry.bind('<FocusIn>', self._on_filter_focus_in)
+        self.filter_entry.bind('<FocusOut>', self._on_filter_focus_out)
+        self.filter_entry.config(foreground='grey')
+        
+        # Filter by status dropdown
+        ttk.Label(filter_frame, text="Status:").grid(row=0, column=2, padx=(10, 5), pady=5)
+        self.status_filter_var = tk.StringVar(value="All")
+        status_combo = ttk.Combobox(filter_frame, textvariable=self.status_filter_var, 
+                                   values=["All", "Pending", "Processed", "Error"], 
+                                   state="readonly", width=12)
+        status_combo.grid(row=0, column=3, padx=5, pady=5)
+        status_combo.bind('<<ComboboxSelected>>', self._on_filter_change)
+        
+        # Clear filter button
+        clear_filter_btn = ttk.Button(filter_frame, text="❌", width=3,
+                                     command=self._clear_filters)
+        clear_filter_btn.grid(row=0, column=4, padx=5, pady=5)
         
         # Create treeview with scrollbars
         tree_frame = ttk.Frame(data_frame)
@@ -739,6 +708,126 @@ class VenusDesktopApp:
         except Exception as e:
             self._log(f"❌ Error handling double-click: {e}")
     
+    def _on_filter_change(self, event=None):
+        """Handle filter changes and update tree display"""
+        try:
+            self._apply_filters()
+        except Exception as e:
+            self._log(f"❌ Error applying filters: {e}")
+    
+    def _clear_filters(self):
+        """Clear all filters and show all data"""
+        try:
+            self.filter_var.set("")
+            self.status_filter_var.set("All")
+            self._apply_filters()
+            self._log("🔍 Filters cleared")
+        except Exception as e:
+            self._log(f"❌ Error clearing filters: {e}")
+    
+    def _apply_filters(self):
+        """Apply current filters to the data tree"""
+        try:
+            if not hasattr(self, 'all_data') or not self.all_data:
+                return
+            
+            # Get filter values
+            text_filter = self.filter_var.get().lower().strip()
+            status_filter = self.status_filter_var.get()
+            
+            # Clear current tree
+            for item in self.data_tree.get_children():
+                self.data_tree.delete(item)
+            
+            filtered_count = 0
+            
+            # Apply filters
+            for record in self.all_data:
+                # Text filter (search in employee name, date, status)
+                if text_filter:
+                    searchable_text = f"{record.get('employee_name', '')}"
+                    searchable_text += f" {record.get('date', '')}"
+                    searchable_text += f" {record.get('status', '')}"
+                    if text_filter not in searchable_text.lower():
+                        continue
+                
+                # Status filter
+                if status_filter != "All":
+                    record_status = record.get('status', 'Unknown')
+                    if status_filter.lower() not in record_status.lower():
+                        continue
+                
+                # Add to tree if passes all filters
+                self._add_record_to_tree(record)
+                filtered_count += 1
+            
+            # Update statistics
+            total_count = len(self.all_data)
+            if filtered_count < total_count:
+                self.data_stats_label.config(text=f"📊 {filtered_count}/{total_count} records (filtered)")
+            else:
+                self.data_stats_label.config(text=f"📊 {total_count} records")
+            
+            self._update_selection_counter()
+            
+        except Exception as e:
+            self._log(f"❌ Error applying filters: {e}")
+    
+    def _add_record_to_tree(self, record):
+        """Add a single record to the tree view"""
+        try:
+            # Format values for display
+            values = (
+                record.get('employee_name', ''),
+                record.get('employee_id', ''),
+                record.get('date', ''),
+                record.get('day_of_week', ''),
+                record.get('shift', ''),
+                record.get('check_in', ''),
+                record.get('check_out', ''),
+                record.get('regular_hours', ''),
+                record.get('overtime_hours', ''),
+                record.get('total_hours', ''),
+                record.get('task_code', ''),
+                record.get('station_code', ''),
+                record.get('machine_code', ''),
+                record.get('expense_code', ''),
+                record.get('raw_charge_job', ''),
+                record.get('status', ''),
+                record.get('transfer_status', ''),
+                json.dumps(record)  # Store complete record as JSON
+            )
+            
+            # Add to tree
+            item_id = self.data_tree.insert('', 'end', values=values)
+            
+            # Color coding based on status
+            status = record.get('status', '').lower()
+            if 'error' in status:
+                self.data_tree.set(item_id, '#0', '❌')
+            elif 'processed' in status:
+                self.data_tree.set(item_id, '#0', '✅')
+            elif 'pending' in status:
+                self.data_tree.set(item_id, '#0', '⏳')
+            else:
+                self.data_tree.set(item_id, '#0', '📋')
+            
+            return item_id
+            
+        except Exception as e:
+            self._log(f"❌ Error adding record to tree: {e}")
+            return None
+    
+    def _select_all_visible(self, event=None):
+        """Select all visible items in the tree"""
+        try:
+            items = self.data_tree.get_children()
+            self.data_tree.selection_set(items)
+            self._update_selection_counter()
+            self._log(f"📋 Selected {len(items)} visible records")
+        except Exception as e:
+            self._log(f"❌ Error selecting all: {e}")
+    
     def _show_record_details(self, record):
         """Show detailed information about a record"""
         try:
@@ -791,33 +880,344 @@ class VenusDesktopApp:
         except Exception as e:
             self._log(f"❌ Error in initial data load: {e}")
     
-    def _create_log_section(self):
-        """Create log display section"""
-        log_frame = ttk.LabelFrame(self.main_frame, text="System Log", padding="10")
-        log_frame.grid(row=2, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(10, 0))
+    def _create_compact_log_section(self):
+        """Create compact log section with modern design"""
+        log_frame = ttk.LabelFrame(self.main_frame, text="📋 Activity Log", padding="8")
+        log_frame.grid(row=3, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(10, 0))
         log_frame.columnconfigure(0, weight=1)
         log_frame.rowconfigure(0, weight=1)
         
-        # Create log text widget with scrollbar
-        log_text_frame = ttk.Frame(log_frame)
-        log_text_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        log_text_frame.columnconfigure(0, weight=1)
-        log_text_frame.rowconfigure(0, weight=1)
-        
-        self.log_text = scrolledtext.ScrolledText(log_text_frame, height=8, wrap="word")
+        # Create scrolled text widget for logs with modern styling
+        self.log_text = scrolledtext.ScrolledText(log_frame, height=6, wrap=tk.WORD, 
+                                                 font=('Consolas', 8), state='disabled',
+                                                 bg='#f8f9fa', fg='#333333')
         self.log_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         
-        # Log control buttons
-        log_btn_frame = ttk.Frame(log_frame)
-        log_btn_frame.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=(5, 0))
+        # Compact log controls
+        log_controls = ttk.Frame(log_frame)
+        log_controls.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=(5, 0))
         
-        ttk.Button(log_btn_frame, text="Clear Log", command=self._clear_log).pack(side="left", padx=(0, 5))
-        ttk.Button(log_btn_frame, text="Save Log", command=self._save_log).pack(side="left")
+        # Essential buttons only
+        clear_log_btn = ttk.Button(log_controls, text="🗑️ Clear", command=self._clear_log, width=8)
+        clear_log_btn.grid(row=0, column=0, padx=(0, 5))
+        
+        save_log_btn = ttk.Button(log_controls, text="💾 Save", command=self._save_log, width=8)
+        save_log_btn.grid(row=0, column=1, padx=(0, 10))
+        
+        # Auto-scroll toggle (compact)
+        self.auto_scroll_var = tk.BooleanVar(value=True)
+        auto_scroll_cb = ttk.Checkbutton(log_controls, text="Auto-scroll", variable=self.auto_scroll_var)
+        auto_scroll_cb.grid(row=0, column=2, padx=(0, 10))
+        
+        # Log level filter (compact)
+        ttk.Label(log_controls, text="Level:").grid(row=0, column=3, padx=(0, 2))
+        self.log_level_var = tk.StringVar(value="All")
+        log_level_combo = ttk.Combobox(log_controls, textvariable=self.log_level_var, 
+                                      values=["All", "Info", "Warning", "Error"], 
+                                      state="readonly", width=8)
+        log_level_combo.grid(row=0, column=4)
+        
+        # Statistics text area (for displaying data stats)
+        stats_frame = ttk.Frame(log_frame)
+        stats_frame.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=(5, 0))
+        stats_frame.columnconfigure(0, weight=1)
+        
+        ttk.Label(stats_frame, text="📊 Statistics:").grid(row=0, column=0, sticky="w")
+        self.stats_text = tk.Text(stats_frame, height=3, wrap=tk.WORD, font=('Consolas', 8), 
+                                 bg='#f0f0f0', fg='#333333', state='disabled')
+        self.stats_text.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=(2, 0))
+        
+        # Configure log controls grid
+        log_controls.grid_columnconfigure(5, weight=1)
+        
+        # Store reference to log frame
+        self.log_frame = log_frame
+    
+    def _setup_auto_refresh(self):
+        """Setup auto-refresh functionality for data"""
+        try:
+            # Initialize auto-refresh variables
+            self.auto_refresh_enabled = True
+            self.auto_refresh_interval = 30000  # 30 seconds
+            self.last_refresh_time = None
+            
+            # Start auto-refresh timer
+            self._schedule_auto_refresh()
+            self._log("🔄 Auto-refresh enabled (30s interval)")
+            
+        except Exception as e:
+            self._log(f"❌ Error setting up auto-refresh: {e}")
+    
+    def _schedule_auto_refresh(self):
+        """Schedule the next auto-refresh"""
+        try:
+            if hasattr(self, 'auto_refresh_enabled') and self.auto_refresh_enabled:
+                # Check if auto-refresh is still enabled via checkbox
+                if hasattr(self, 'auto_refresh_var') and self.auto_refresh_var.get():
+                    self.root.after(self.auto_refresh_interval, self._auto_refresh_data)
+                else:
+                    # Re-schedule check in 5 seconds
+                    self.root.after(5000, self._schedule_auto_refresh)
+        except Exception as e:
+            self._log(f"❌ Error scheduling auto-refresh: {e}")
+    
+    def _auto_refresh_data(self):
+        """Automatically refresh data if conditions are met"""
+        try:
+            # Only auto-refresh if not currently processing
+            if (hasattr(self, 'automation_manager') and 
+                not getattr(self.automation_manager, 'is_processing', False)):
+                
+                # Refresh data in background
+                self._refresh_data_async()
+                self.last_refresh_time = datetime.now()
+                
+                # Update last refresh label
+                if hasattr(self, 'last_update_label'):
+                    time_str = self.last_refresh_time.strftime("%H:%M:%S")
+                    self.last_update_label.config(text=f"🕒 Last: {time_str}")
+                
+                self._log("🔄 Auto-refresh completed")
+            
+            # Schedule next refresh
+            self._schedule_auto_refresh()
+            
+        except Exception as e:
+            self._log(f"❌ Error during auto-refresh: {e}")
+            # Still schedule next refresh even if this one failed
+            self._schedule_auto_refresh()
+    
+    def _toggle_auto_refresh(self):
+        """Toggle auto-refresh functionality on/off"""
+        try:
+            if self.auto_refresh_var.get():
+                self.auto_refresh_enabled = True
+                self._schedule_auto_refresh()
+                self._log("🔄 Auto-refresh enabled")
+            else:
+                self.auto_refresh_enabled = False
+                self._log("⏸️ Auto-refresh disabled")
+        except Exception as e:
+            self._log(f"❌ Error toggling auto-refresh: {e}")
+    
+    def _on_filter_focus_in(self, event):
+        """Handle focus in event for filter entry placeholder"""
+        if self.filter_entry.get() == "Search by employee name, date, or status...":
+            self.filter_entry.delete(0, tk.END)
+            self.filter_entry.config(foreground='black')
+    
+    def _on_filter_focus_out(self, event):
+        """Handle focus out event for filter entry placeholder"""
+        if not self.filter_entry.get():
+            self.filter_entry.insert(0, "Search by employee name, date, or status...")
+            self.filter_entry.config(foreground='grey')
+    
+    def _refresh_data_async(self):
+        """Refresh data asynchronously without blocking UI"""
+        try:
+            # This would typically call your data loading method
+            # For now, we'll just update the timestamp
+            if hasattr(self, 'data_processor') and self.data_processor:
+                # Trigger data refresh in background
+                threading.Thread(target=self._background_data_refresh, daemon=True).start()
+        except Exception as e:
+            self._log(f"❌ Error in async data refresh: {e}")
+    
+    def _background_data_refresh(self):
+        """Background thread for data refresh"""
+        try:
+            # Simulate data refresh - replace with actual data loading
+            time.sleep(1)  # Simulate processing time
+            
+            # Update UI in main thread
+            self.root.after(0, self._update_data_display)
+            
+        except Exception as e:
+             self.root.after(0, lambda: self._log(f"❌ Background refresh error: {e}"))
+    
+    def _update_data_display(self):
+        """Update the data display with current information"""
+        try:
+            # Update data statistics
+            if hasattr(self, 'all_data') and self.all_data:
+                total_count = len(self.all_data)
+                if hasattr(self, 'data_stats_label'):
+                    self.data_stats_label.config(text=f"📊 {total_count} records")
+            
+            # Update last refresh time
+            if hasattr(self, 'last_update_label'):
+                current_time = datetime.now().strftime("%H:%M:%S")
+                self.last_update_label.config(text=f"🕒 Last: {current_time}")
+            
+            # Apply current filters to refresh display
+            if hasattr(self, '_apply_filters'):
+                self._apply_filters()
+                
+        except Exception as e:
+            self._log(f"❌ Error updating data display: {e}")
+    
+    def _update_selection_counter(self):
+        """Update the selection counter display"""
+        try:
+            if hasattr(self, 'data_tree') and hasattr(self, 'selection_counter_label'):
+                selected_items = self.data_tree.selection()
+                count = len(selected_items)
+                
+                if count == 0:
+                    self.selection_counter_label.config(text="📋 0 selected", foreground="gray")
+                elif count == 1:
+                    self.selection_counter_label.config(text="📋 1 selected", foreground="blue")
+                else:
+                    self.selection_counter_label.config(text=f"📋 {count} selected", foreground="blue")
+                    
+        except Exception as e:
+            self._log(f"❌ Error updating selection counter: {e}")
+    
+    def _on_tree_select(self, event=None):
+        """Handle tree selection changes"""
+        try:
+            self._update_selection_counter()
+        except Exception as e:
+            self._log(f"❌ Error handling tree selection: {e}")
+    
+    def _on_tree_click(self, event):
+        """Handle tree click events"""
+        try:
+            # Identify what was clicked
+            item = self.data_tree.identify('item', event.x, event.y)
+            column = self.data_tree.identify('column', event.x, event.y)
+            
+            # Handle checkbox column clicks
+            if column == '#0' and item:
+                # Toggle selection
+                if item in self.data_tree.selection():
+                    self.data_tree.selection_remove(item)
+                else:
+                    self.data_tree.selection_add(item)
+                
+                self._update_selection_counter()
+                
+        except Exception as e:
+             self._log(f"❌ Error handling tree click: {e}")
+    
+    def _on_tree_double_click(self, event):
+        """Handle tree double-click events to show record details"""
+        try:
+            item = self.data_tree.identify('item', event.x, event.y)
+            if item:
+                self._show_record_details(item)
+        except Exception as e:
+            self._log(f"❌ Error handling tree double-click: {e}")
+    
+    def _show_record_details(self, item):
+        """Show detailed information for a selected record"""
+        try:
+            # Get record data from the hidden column
+            record_data = self.data_tree.item(item, 'values')[-1]  # Last column is hidden record_data
+            
+            if record_data:
+                import json
+                try:
+                    data = json.loads(record_data)
+                except:
+                    data = record_data
+                
+                # Create a popup window to show details
+                detail_window = tk.Toplevel(self.root)
+                detail_window.title("📋 Record Details")
+                detail_window.geometry("500x400")
+                detail_window.transient(self.root)
+                detail_window.grab_set()
+                
+                # Center the window
+                detail_window.update_idletasks()
+                x = (detail_window.winfo_screenwidth() // 2) - (500 // 2)
+                y = (detail_window.winfo_screenheight() // 2) - (400 // 2)
+                detail_window.geometry(f"500x400+{x}+{y}")
+                
+                # Create scrolled text widget for details
+                from tkinter import scrolledtext
+                text_widget = scrolledtext.ScrolledText(
+                    detail_window, 
+                    wrap=tk.WORD, 
+                    font=('Consolas', 10),
+                    bg='#f8f9fa',
+                    fg='#333333'
+                )
+                text_widget.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+                
+                # Format and display the data
+                if isinstance(data, dict):
+                    formatted_text = "📋 RECORD DETAILS\n" + "="*50 + "\n\n"
+                    for key, value in data.items():
+                        formatted_text += f"🔹 {key.replace('_', ' ').title()}: {value}\n"
+                else:
+                    formatted_text = f"📋 RECORD DATA\n" + "="*50 + "\n\n{data}"
+                
+                text_widget.insert(tk.END, formatted_text)
+                text_widget.config(state=tk.DISABLED)
+                
+                # Add close button
+                close_btn = ttk.Button(
+                    detail_window, 
+                    text="✖ Close", 
+                    command=detail_window.destroy
+                )
+                close_btn.pack(pady=5)
+                
+        except Exception as e:
+            self._log(f"❌ Error showing record details: {e}")
+    
+    def _select_all_visible(self):
+        """Select all visible items in the tree"""
+        try:
+            # Get all visible items
+            all_items = self.data_tree.get_children()
+            
+            # Select all items
+            self.data_tree.selection_set(all_items)
+            
+            # Update counter
+            self._update_selection_counter()
+            
+            self._log(f"✅ Selected {len(all_items)} visible records")
+            
+        except Exception as e:
+            self._log(f"❌ Error selecting all visible items: {e}")
+    
+    def _clear_selection(self):
+        """Clear all selections"""
+        try:
+            self.data_tree.selection_remove(self.data_tree.selection())
+            self._update_selection_counter()
+            self._log("✅ Selection cleared")
+        except Exception as e:
+            self._log(f"❌ Error clearing selection: {e}")
     
     def _create_status_bar(self):
         """Create status bar at bottom"""
-        self.status_bar = ttk.Label(self.root, text="Ready", relief="sunken", anchor="w")
-        self.status_bar.grid(row=1, column=0, sticky=(tk.W, tk.E))
+        status_frame = ttk.Frame(self.root, relief="sunken", borderwidth=1)
+        status_frame.grid(row=1, column=0, sticky=(tk.W, tk.E))
+        status_frame.columnconfigure(1, weight=1)
+        
+        # Connection status label
+        self.connection_status_label = ttk.Label(status_frame, text="🔴 Disconnected", foreground="red")
+        self.connection_status_label.grid(row=0, column=0, padx=5, pady=2, sticky="w")
+        
+        # Main status bar
+        self.status_bar = ttk.Label(status_frame, text="Ready", anchor="w")
+        self.status_bar.grid(row=0, column=1, padx=5, pady=2, sticky=(tk.W, tk.E))
+        
+        # Server status label
+        self.server_status_label = ttk.Label(status_frame, text="⏸️ Server Stopped", foreground="orange")
+        self.server_status_label.grid(row=0, column=2, padx=5, pady=2, sticky="e")
+        
+        # Data loading label
+        self.data_loading_label = ttk.Label(status_frame, text="📊 Ready", foreground="blue")
+        self.data_loading_label.grid(row=0, column=3, padx=5, pady=2, sticky="e")
+        
+        # Data loading progress variable
+        self.data_loading_var = tk.DoubleVar(value=0.0)
     
     def _setup_styles(self):
         """Setup custom styles for ttk widgets"""
@@ -841,10 +1241,10 @@ class VenusDesktopApp:
                 self.exclusion_validator = EmployeeExclusionValidator()
                 self._log(f"🔒 Employee exclusion validation: {'Enabled' if self.exclusion_validator.is_enabled() else 'Disabled'}")
             
-            # Initialize processor
-            if RealAPIDataProcessor:
-                self.processor = RealAPIDataProcessor()
-                self._log("✅ RealAPIDataProcessor initialized")
+            # Initialize core database manager
+            if CoreDatabaseManager:
+                self.core_db_manager = CoreDatabaseManager()
+                self._log("✅ Core DatabaseManager initialized")
             
             # Initialize enhanced automation
             if EnhancedUserControlledAutomationSystem:
@@ -1468,32 +1868,29 @@ class VenusDesktopApp:
             self._log(f"❌ Error stopping automation: {e}")
     
     def _test_connection(self):
-        """Test connection to staging server"""
+        """Test connection to staging database"""
         def test_worker():
             try:
-                self._log("🔗 Testing connection to staging server...")
+                self._log("🔗 Testing connection to staging database...")
                 self._update_status("Testing connection...")
                 
-                response = requests.get("http://localhost:5173/api/staging/data-grouped", timeout=5)
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    if data.get('success'):
-                        self._log(f"✅ Connection successful - {data.get('count', 0)} records available")
+                if self.processor:
+                    # Test database connection
+                    data = self.processor.fetch_grouped_staging_data()
+                    
+                    if data and data.get('success'):
+                        self._log(f"✅ Database connection successful - {data.get('count', 0)} records available")
                         self._update_status("Connection successful")
                     else:
-                        self._log(f"❌ API error: {data.get('error', 'Unknown error')}")
-                        self._update_status("API error")
+                        self._log(f"❌ Database error: {data.get('error', 'Unknown error') if data else 'No data returned'}")
+                        self._update_status("Database error")
                 else:
-                    self._log(f"❌ Connection failed - HTTP {response.status_code}")
-                    self._update_status("Connection failed")
+                    self._log("❌ Database manager not initialized")
+                    self._update_status("Database manager error")
                     
-            except requests.exceptions.RequestException as e:
-                self._log(f"❌ Connection error: {e}")
-                self._update_status("Connection error")
             except Exception as e:
-                self._log(f"❌ Test error: {e}")
-                self._update_status("Test error")
+                self._log(f"❌ Database connection error: {e}")
+                self._update_status("Database connection error")
         
         self.executor.submit(test_worker)
     

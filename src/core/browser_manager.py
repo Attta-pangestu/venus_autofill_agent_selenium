@@ -48,7 +48,7 @@ class BrowserManager:
             'disable_javascript': False,
             'page_load_strategy': 'normal',  # normal, eager, none
             'implicit_wait': 10,
-            'page_load_timeout': 30,
+            'page_load_timeout': 60,  # Increased to prevent renderer timeout issues
             'script_timeout': 30,
             'enable_logging': True,
             'log_level': 'INFO'
@@ -503,7 +503,7 @@ class BrowserManager:
         
         # Set timeouts with robust values to prevent renderer timeouts
         implicit_wait = options.get('implicit_wait', 12)
-        page_load_timeout = options.get('page_load_timeout', 45)
+        page_load_timeout = options.get('page_load_timeout', 60)  # Increased default fallback
         script_timeout = options.get('script_timeout', 30)
         
         self.driver.implicitly_wait(implicit_wait)

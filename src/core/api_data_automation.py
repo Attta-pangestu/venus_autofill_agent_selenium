@@ -509,7 +509,7 @@ class RealAPIDataProcessor:
             "browser": {
                 "headless": False,
                 "window_size": [1280, 720],
-                "page_load_timeout": 30,
+                "page_load_timeout": 60,  # Increased to prevent renderer timeout
                 "implicit_wait": 10,
                 "script_timeout": 30
             },
